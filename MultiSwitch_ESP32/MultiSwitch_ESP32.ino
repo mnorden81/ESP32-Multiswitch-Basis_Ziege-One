@@ -53,7 +53,7 @@
      (kein SD-Karten-Slot vorhanden - rein Web/WLAN-basiert), siehe webui.h.
    - WLAN-Steuerung: optionales Auto-Failsafe schaltet den Access Point
      automatisch ein, wenn längere Zeit kein gültiges RC-Signal anliegt
-     (z.B. Sender aus/außer Reichweite) - Default AUS, siehe
+     (z.B. Sender aus/außer Reichweite) - Default AN seit v2.01, siehe
      wifiFailsafeCheck() unten. Ergänzend manueller "WLAN jetzt ein/aus"-
      Schalter (Web-UI), der ohne Neustart sofort wirkt, siehe webui.h.
    - Firmware-Update per WLAN (OTA): eine mit der Arduino-IDE gebaute
@@ -106,7 +106,7 @@
 #include "crsf_esp32.h"
 #include "blink_presets.h"
 
-constexpr uint16_t Version = 200; // 2.00
+constexpr uint16_t Version = 203; // 2.03
 
 // ======== SBUS-Schwellen (benannte Konstanten) ==================
 static constexpr uint16_t SBUS_LOW_THRESHOLD  =  800;
@@ -186,16 +186,36 @@ char        g_wifi_ip[16]       = "192.168.1.1";   // konfigurierbare AP-IP
 const char* AP_IP_STR           = g_wifi_ip;        // Alias fuer Abwaertskompatibilitaet
 char        g_device_name[24]   = "MultiSwitch";    // NEU V1.4: Geraetename im TBS Agent / LUA
 
-// ======== WLAN-Auto-Failsafe (NEU v2.00) ========================
+// ======== WLAN-Auto-Failsafe (NEU v2.00, Default AN seit v2.01) ========
 // Schaltet den Access Point automatisch ein, wenn ueber die eingestellte
 // Zeit kein gueltiges RC-Signal anliegt (nutzt BUS_OK) - z.B. wenn kein
 // Sender gebunden ist oder der Empfaenger fehlt, damit man trotzdem per
 // WLAN ins Web-Interface kommt, auch wenn der Boot-Pin (GPIO13) gerade
 // nicht erreichbar ist. Schaltet NUR ein, nie automatisch wieder aus
-// (siehe wifiFailsafeCheck() weiter unten). Default AUS (opt-in), damit
-// ein Firmware-Update auf v2.00 das bisherige Verhalten nicht aendert.
-bool     g_wifi_auto         = false;
+// (siehe wifiFailsafeCheck() weiter unten).
+// Seit v2.01 Default AN - analog zum Soundmodul-Projekt (dortiges Feature
+// "WLAN dauerhaft an"), ebenfalls fuer bestehende Geraete beim Update
+// (siehe Migrations-Default in nvsLoad() unten: p.getBool("wauto", true)).
+// WICHTIG: dieser Schalter schaltet WLAN NICHT sofort beim Booten ein,
+// sondern erst nach g_wifi_auto_timeout Sekunden OHNE gueltiges RC-Signal -
+// bei normal gebundenem Sender bleibt WLAN also weiterhin aus, anders als
+// beim Soundmodul, das WLAN dort unabhaengig vom RC-Signal sofort startet.
+bool     g_wifi_auto         = true;
 uint16_t g_wifi_auto_timeout = 60;   // Sekunden, gueltiger Bereich 5-240
+
+// WLAN dauerhaft aktiv (NEU v2.02, uebernommen aus dem Soundmodul-Projekt
+// ESP32-RC-Sound v7.16, dortiges Feature "WifiAlwaysOn"): der AP wird in
+// webui_init() fest eingeschaltet und danach von der Firmware nie mehr
+// ausgeschaltet - der GPIO13-Bootpin (siehe webui_init() in webui.h) UND
+// der Auto-Failsafe oben (g_wifi_auto/g_wifi_auto_timeout) werden dabei
+// uebersprungen, siehe wifiFailsafeCheck() weiter unten. Anders als beim
+// Soundmodul gibt es hier keinen Sofort-Schalter aus dem CRSF-Menue heraus -
+// Feld 80 unten wirkt wie 78/79 rein persistierend, kein Aufruf von
+// webui_enableAP() aus crsfWriteParam() heraus (siehe Kommentar dort).
+// Default AN (true), auch fuer Bestandsgeraete beim ersten Boot nach einem
+// Firmware-Update (siehe Migrations-Default in nvsLoad() unten:
+// p.getBool("walways", true)).
+bool     g_wifi_always_on    = true;
 
 // ======== NVS ===================================================
 static bool nvsDirty = false;
@@ -223,6 +243,7 @@ static void nvsWriteNow() {
     p.putString("dnam", g_device_name);   // NEU V1.4
     p.putBool("wauto",  g_wifi_auto);         // NEU v2.00
     p.putUInt("watout", g_wifi_auto_timeout); // NEU v2.00
+    p.putBool("walways", g_wifi_always_on);   // NEU v2.02
     p.end();
     nvsDirty = false;
     nvsSaveScheduled = false;
@@ -273,9 +294,16 @@ static void nvsLoad() {
     strncpy(g_wifi_pass,    pw.c_str(),   sizeof(g_wifi_pass)-1);
     strncpy(g_wifi_ip,      ip.c_str(),   sizeof(g_wifi_ip)-1);
     strncpy(g_device_name,  dnam.c_str(), sizeof(g_device_name)-1);
-    g_wifi_auto         = p.getBool("wauto",  false); // NEU v2.00
+    // Migrations-Default seit v2.01 bewusst true (nicht false) - siehe
+    // Kommentar bei g_wifi_auto weiter oben: ein Geraet, dessen NVS den
+    // Schluessel "wauto" noch nicht kennt (Update von vor v2.01), soll den
+    // neuen Default ("an") automatisch bekommen.
+    g_wifi_auto         = p.getBool("wauto",  true);  // NEU v2.00, Default AN seit v2.01
     g_wifi_auto_timeout = p.getUInt("watout", 60);    // NEU v2.00
     if (g_wifi_auto_timeout < 5 || g_wifi_auto_timeout > 240) g_wifi_auto_timeout = 60;
+    // Migrations-Default seit v2.02 bewusst true - siehe Kommentar bei
+    // g_wifi_always_on weiter oben.
+    g_wifi_always_on = p.getBool("walways", true);    // NEU v2.02
     p.end();
     nvsDirty = false;
     nvsSaveScheduled = false;
@@ -292,7 +320,8 @@ static void nvsReset() {
     strncpy(g_wifi_pass,   "123456789",   sizeof(g_wifi_pass)-1);
     strncpy(g_wifi_ip,     "192.168.1.1", sizeof(g_wifi_ip)-1);
     strncpy(g_device_name, "MultiSwitch", sizeof(g_device_name)-1);  // NEU V1.4
-    g_wifi_auto = false; g_wifi_auto_timeout = 60;   // NEU v2.00
+    g_wifi_auto = true; g_wifi_auto_timeout = 60;    // NEU v2.00, Default AN seit v2.01
+    g_wifi_always_on = true;                         // NEU v2.02
     nvsSave();
     nvsFlushPending();
 }
@@ -433,9 +462,19 @@ static void einkanalFunctionSBUS(uint16_t channel) {
 //   fi+7: U8  "PWM Festwert"    0-255
 //   fi+8: Sel "Test"            Aus;Ein
 // Global: 0=Root,1=Version,2=Folder,3=Switch Addr,4=CRSF Kanal
-// Total: 5+8*9=77 Parameter (0..76)
+// WLAN (NEU v2.02, uebernommen aus dem Soundmodul-Projekt, dortiges
+// CRSF/Lua-Menue fuer WLAN-Einstellungen, Felder 174-181): eigener
+// Ordner 77 mit Kindern 78-80, an die Root angehaengt statt bestehende
+// IDs 0-76 umzunummerieren, damit bestehende Radio-Profile/Lua-Skripte
+// mit festen Feld-IDs weiterlaufen (gleiches Vorgehen wie beim
+// Soundmodul beim Anhaengen von Feld 181 an Ordner 160).
+//   77: Folder "WLAN"         (Kinder 78,79,80)
+//   78: Sel  "Auto-Failsafe"  Aus;Ein  -> g_wifi_auto
+//   79: U8   "Auto Timeout"   5-240 s  -> g_wifi_auto_timeout
+//   80: Sel  "Dauerhaft an"   Aus;Ein  -> g_wifi_always_on
+// Total: 5+8*9+4=81 Parameter (0..80)
 
-static constexpr uint8_t CRSF_PARAM_COUNT = 76;
+static constexpr uint8_t CRSF_PARAM_COUNT = 80;
 
 // ── CRSF-Geraeteadresse + Ping-Slot aus der WM-Adresse (uebernommen aus Soundmodul v1.24) ──
 // Adresse = 0xC0 + modul_adress; Slot = (Adresse-0xC0)*2; Antwort erst im eigenen
@@ -475,7 +514,7 @@ static void crsfSendParam(uint8_t idx) {
 
     if (idx == 0) {
         crsf.send_param_response_CRSF_FOLDER(0, 0, "",
-            {1,2,5,14,23,32,41,50,59,68});
+            {1,2,5,14,23,32,41,50,59,68,77});
     } else if (idx == 1) {
         crsf.send_param_response_CRSF_INFO(1, 0, "Version", "v1.42 ESP32");
     } else if (idx == 2) {
@@ -552,6 +591,25 @@ static void crsfSendParam(uint8_t idx) {
                 "Test", "Aus;Ein", 0, 0, 1);
             break;
         }
+    } else if (idx == 77) {
+        // NEU v2.02, uebernommen aus dem Soundmodul-Projekt (dort Ordner 160)
+        crsf.send_param_response_CRSF_FOLDER(77, 0, "WLAN", {78,79,80});
+    } else if (idx == 78) {
+        // NEU v2.02, uebernommen aus dem Soundmodul-Projekt (dort Feld 175)
+        crsf.send_param_response_CRSF_TEXT_SELECTION(78, 77,
+            "Auto-Failsafe", "Aus;Ein",
+            g_wifi_auto ? 1 : 0, 0, 1);
+    } else if (idx == 79) {
+        // NEU v2.02, uebernommen aus dem Soundmodul-Projekt (dort Feld 176)
+        crsf.send_param_response_CRSF_UINT8(79, 77,
+            "Auto Timeout", (uint8_t)constrain(g_wifi_auto_timeout,5,240), 5, 240, "s");
+    } else if (idx == 80) {
+        // NEU v2.02, uebernommen aus dem Soundmodul-Projekt (dort Feld 181,
+        // "WLAN dauerhaft an") - Default AN, ueberstimmt 78/79 vollstaendig
+        // (siehe wifiFailsafeCheck()/webui_init()).
+        crsf.send_param_response_CRSF_TEXT_SELECTION(80, 77,
+            "Dauerhaft an", "Aus;Ein",
+            g_wifi_always_on ? 1 : 0, 0, 1);
     }
 }
 
@@ -607,6 +665,24 @@ static void crsfWriteParam(uint8_t idx, uint8_t val) {
             else          einkanal_Data &= ~(1 << x);
             break;
         }
+    } else if (idx == 78) {
+        // NEU v2.02: rein persistierend, wie beim Soundmodul (dort Feld
+        // 175) - kein sofortiges Ein-/Ausschalten, wirkt erst beim naechsten
+        // Timeout-Ablauf bzw. Bootvorgang.
+        g_wifi_auto = (val != 0); nvsSave();
+    } else if (idx == 79) {
+        // NEU v2.02, analog Soundmodul Feld 176.
+        g_wifi_auto_timeout = constrain((uint16_t)val, (uint16_t)5, (uint16_t)240);
+        nvsSave();
+    } else if (idx == 80) {
+        // NEU v2.02: rein persistierend wie 78/79, KEIN sofortiger Aufruf
+        // von webui_enableAP() (anders als der Sofort-Schalter "WLAN
+        // jetzt" ueber /api/wifi). Wirkt erst ab dem naechsten Bootvorgang -
+        // bewusst so (Lehre aus dem Soundmodul-Projekt seit v7.15): ein
+        // WLAN-Start zur Laufzeit direkt aus dem CRSF-Parameter-Handler
+        // heraus ist unnoetiges Risiko, da der AP durch den Default "an"
+        // beim Booten ohnehin schon laeuft.
+        g_wifi_always_on = (val != 0); nvsSave();
     }
 }
 
@@ -628,6 +704,14 @@ static void crsfWriteParam(uint8_t idx, uint8_t val) {
 static void wifiFailsafeCheck() {
     static unsigned long busLostSinceMs = 0;
     static bool          busLostSincePending = false;
+
+    // NEU v2.02: WLAN dauerhaft an ueberstimmt den Auto-Failsafe komplett -
+    // der AP laeuft in diesem Fall bereits seit dem Booten (siehe
+    // webui_init() in webui.h), ein Timer hier waere wirkungslos.
+    if (g_wifi_always_on) {
+        busLostSincePending = false;
+        return;
+    }
 
     if (BUS_OK) {
         busLostSincePending = false;
@@ -807,7 +891,13 @@ void loop() {
             crsf.setDeviceInfoReplyPending(false);
             char devName[24];
             snprintf(devName, sizeof(devName), "%s@%d", g_device_name, modul_adress);  // NEU V1.4
-            crsf.send_device_info(devName, CRSF_PARAM_COUNT);
+            // NEU v2.03, uebernommen aus dem Soundmodul-Projekt (v7.18):
+            // Firmware-Version als CRSF "Parameter Version Number"
+            // mitgeben (war zuvor fest 0x00, siehe Kommentar in
+            // crsf_esp32.cpp/send_device_info()) - damit erkennen
+            // Konfiguratoren wie TBS Agent eine geaenderte Parameter-
+            // struktur zuverlaessig und lesen sie neu ein.
+            crsf.send_device_info(devName, CRSF_PARAM_COUNT, (uint8_t)(Version & 0xFF));
         }
         // ELRS LUA Script: Parameter lesen
         if (crsf.getDeviceReadReplyPending()) {
