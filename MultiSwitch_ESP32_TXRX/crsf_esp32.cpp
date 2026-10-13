@@ -490,7 +490,7 @@ void CRSF::send_ping() {
 }
  
 
-void CRSF::send_device_info(const char* name, uint8_t parameter) {
+void CRSF::send_device_info(const char* name, uint8_t parameter, uint8_t paramVersion) {
 
     deviceInfoReplyPending = false;
 
@@ -518,7 +518,16 @@ void CRSF::send_device_info(const char* name, uint8_t parameter) {
     packet[12 + len_name + 4] = 0x00; // software version 4
 
     packet[13 + len_name + 4] = parameter; // number of config parameters
-    packet[14 + len_name + 4] = 0x00; // parameter protocol version
+    // NEU v2.03, uebernommen aus dem Soundmodul-Projekt (ESP32-RC-Sound
+    // v7.18): war fest 0x00 - Konfiguratoren wie TBS Agent nutzen genau
+    // dieses Byte, um eine bereits gecachte Parameterliste als veraltet zu
+    // erkennen und komplett neu einzulesen. Blieb es konstant, zeigte TBS
+    // Agent nach einem Firmware-Update mit geaenderter Parameterstruktur
+    // (z.B. die WLAN-Felder 77-80 seit v2.02) weiterhin seine alte,
+    // zwischengespeicherte Menuestruktur. Der Aufrufer
+    // (MultiSwitch_ESP32_TXRX.ino) uebergibt hier die Firmware-Version, die
+    // ohnehin bei jeder Aenderung diszipliniert hochgezaehlt wird.
+    packet[14 + len_name + 4] = paramVersion; // parameter protocol version
 
     packet[packet[1]+1] = crc8(&packet[2], packet[1] - 1);
 
