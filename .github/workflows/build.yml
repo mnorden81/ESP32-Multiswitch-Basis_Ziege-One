@@ -1,0 +1,48 @@
+name: Build
+
+# Bei jedem Push/PR:
+#   1. Pruefen, dass die drei Kopien der gemeinsamen CRSF-Bibliothek
+#      (src/CRSF_ESP32/ in jedem Sketch-Ordner) identisch sind.
+#   2. Alle drei Sketches mit arduino-cli fuer den ESP32 kompilieren
+#      (reiner Compile-Check, kein Flashen, keine Hardware).
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  crsf-copies:
+    name: CRSF-Bibliothek in allen Varianten gleich
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Kopien vergleichen
+        run: |
+          diff -r MultiSwitch_ESP32/src/CRSF_ESP32 MultiSwitch_ESP32_V3/src/CRSF_ESP32
+          diff -r MultiSwitch_ESP32/src/CRSF_ESP32 MultiSwitch_ESP32_TXRX/src/CRSF_ESP32
+
+  build:
+    name: Build ${{ matrix.sketch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sketch: [ MultiSwitch_ESP32, MultiSwitch_ESP32_V3, MultiSwitch_ESP32_TXRX ]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install arduino-cli
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Install ESP32 core and libraries
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@3.0.7
+          arduino-cli lib install "Bolder Flight Systems SBUS@8.1.4"
+
+      - name: Compile
+        run: arduino-cli compile --fqbn esp32:esp32:esp32 --warnings default ${{ matrix.sketch }}

@@ -1,4 +1,4 @@
-# ESP32-MultiSwitch v3.12
+# ESP32-MultiSwitch v3.13
 
 RC-gesteuerter 8-Kanal-Schalter für ESP32 mit Web-Interface.
 
@@ -8,6 +8,12 @@ RC-gesteuerter 8-Kanal-Schalter für ESP32 mit Web-Interface.
 (Ordner `ESP32_Multiswitch_2/ESP32-Multiswitch-CRSF-bidirektional/`).
 v2.xx bleibt dort unverändert bestehen und wird von dieser Version nicht
 berührt – beide Projekte sind unabhängig voneinander baubar.
+
+## Änderungen v3.13 (gemeinsame CRSF-Bibliothek)
+
+- **CRSF-Code als gemeinsame Bibliothek** `src/CRSF_ESP32/` (CRSF_ESP32 v1.0.0, identisch mit dem Soundmodul und den anderen Multiswitch-Varianten; siehe `src/CRSF_ESP32/README.md`). Die Arduino-IDE kompiliert den Unterordner automatisch mit.
+- **Fixes laut CRSF-Spezifikation:** Der Empfangs-Parser verliert keine Frames mehr, die über zwei `loop()`-Durchläufe verteilt ankommen (vorher verloren und als CRC-Fehler gezählt). Link-Statistik-Felder korrekt zugeordnet, Command-CRC (0xBA) korrigiert, FOLDER-Eintrag ohne überzähliges Byte.
+- Versionsstring: "v3.13 ESP32".
 
 ## Änderungen v3.12 (CRSF-Fix, übernommen aus v2.03)
 
