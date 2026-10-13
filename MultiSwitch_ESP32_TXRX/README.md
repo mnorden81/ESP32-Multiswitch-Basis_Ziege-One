@@ -1,6 +1,11 @@
-# ESP32-MultiSwitch TXRX v3.11
+# ESP32-MultiSwitch TXRX v3.12
 
-Variante von v3.10 für die Platine **Multiswitch_TXRX** (ESP32 + ULN2803A). Einziger Unterschied zu v3.10: die Ausgangs-Pinbelegung (siehe Pin-Belegung unten). Alle Funktionen von v3.10 sind unverändert enthalten. **Nicht** auf der alten Platine (Ausgänge GPIO 18–27) verwenden – dafür `MultiSwitch_ESP32_V3/` nehmen.
+Variante von v3.12 (`MultiSwitch_ESP32_V3/`) für die Platine **Multiswitch_TXRX** (ESP32 + ULN2803A). Einziger Unterschied zu V3: die Ausgangs-Pinbelegung (siehe Pin-Belegung unten). Alle Funktionen von V3 sind unverändert enthalten. **Nicht** auf der alten Platine (Ausgänge GPIO 18–27) verwenden – dafür `MultiSwitch_ESP32_V3/` nehmen.
+
+## Änderungen v3.12 (CRSF-Fix, übernommen aus v2.03)
+
+- **Fix: CRSF-"Parameter Version Number"** im DEVICE_INFO-Frame war fest `0x00` (`send_device_info()`, crsf_esp32.cpp). Jetzt wird die Firmware-Version mitgegeben, damit Konfiguratoren wie TBS Agent eine geänderte Parameterstruktur neu einlesen.
+- Versionsstring: "v3.12 ESP32 TXRX".
 
 ## Änderungen v3.11
 

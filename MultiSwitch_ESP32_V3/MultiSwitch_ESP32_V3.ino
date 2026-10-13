@@ -1,5 +1,5 @@
 /*
-    ESP32-MultiSwitch  v3.00
+    ESP32-MultiSwitch  v3.12
    v3.00 erstellt von: PiperPilot - eigenstaendiges, unabhaengig baubares
    Projekt, abgezweigt von ESP32-MultiSwitch v2.02 (siehe ESP32_Multiswitch_2/
    ESP32-Multiswitch-CRSF-bidirektional/). v2.xx bleibt unveraendert bestehen.
@@ -37,6 +37,12 @@
    2 = ELRS normiert  (SBUS)
    3 = HoTT           (SBUS)
    4 = CRSF           (ExpressLRS / TBS CrossFire, bidirektional)
+
+ ÄNDERUNGEN v3.12 (CRSF-Fix, übernommen aus v2.03):
+   - CRSF "Parameter Version Number" im DEVICE_INFO-Frame war fest 0x00;
+     jetzt wird die Firmware-Version mitgegeben (siehe send_device_info()).
+     Damit lesen Konfiguratoren wie TBS Agent eine geaenderte
+     Parameterstruktur neu ein.
 
  ÄNDERUNGEN v3.10 (Mehrfachkonfiguration pro Ausgang):
    - NEU: bis zu 3 unabhängige (Kanal-Quelle -> Blink/PWM)-Konfigurationen
@@ -161,7 +167,7 @@
 #include "crsf_esp32.h"
 #include "blink_presets.h"
 
-constexpr uint16_t Version = 310; // 3.10 - Mehrfachkonfiguration pro Ausgang (siehe unten)
+constexpr uint16_t Version = 312; // 3.12 - CRSF Parameter Version Number (Fix aus v2.03)
 
 // ======== SBUS-Schwellen (benannte Konstanten) ==================
 static constexpr uint16_t SBUS_LOW_THRESHOLD  =  800;
@@ -704,7 +710,7 @@ static void crsfSendParam(uint8_t idx) {
         crsf.send_param_response_CRSF_FOLDER(0, 0, "",
             {1,2,5,14,23,32,41,50,59,68,77});
     } else if (idx == 1) {
-        crsf.send_param_response_CRSF_INFO(1, 0, "Version", "v3.10 ESP32");
+        crsf.send_param_response_CRSF_INFO(1, 0, "Version", "v3.12 ESP32");
     } else if (idx == 2) {
         crsf.send_param_response_CRSF_FOLDER(2, 0, "Global", {3,4});
     } else if (idx == 3) {

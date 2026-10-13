@@ -1,4 +1,4 @@
-# ESP32-MultiSwitch v3.10
+# ESP32-MultiSwitch v3.12
 
 RC-gesteuerter 8-Kanal-Schalter für ESP32 mit Web-Interface.
 
@@ -8,6 +8,11 @@ RC-gesteuerter 8-Kanal-Schalter für ESP32 mit Web-Interface.
 (Ordner `ESP32_Multiswitch_2/ESP32-Multiswitch-CRSF-bidirektional/`).
 v2.xx bleibt dort unverändert bestehen und wird von dieser Version nicht
 berührt – beide Projekte sind unabhängig voneinander baubar.
+
+## Änderungen v3.12 (CRSF-Fix, übernommen aus v2.03)
+
+- **Fix: CRSF-"Parameter Version Number"** im DEVICE_INFO-Frame war fest `0x00` (`send_device_info()`, crsf_esp32.cpp). Jetzt wird die Firmware-Version mitgegeben, damit Konfiguratoren wie TBS Agent eine geänderte Parameterstruktur neu einlesen.
+- Versionsstring: "v3.12 ESP32".
 
 ## Änderungen v3.10 (Mehrfachkonfiguration pro Ausgang)
 
