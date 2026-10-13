@@ -1105,7 +1105,13 @@ void loop() {
             crsf.setDeviceInfoReplyPending(false);
             char devName[24];
             snprintf(devName, sizeof(devName), "%s@%d", g_device_name, modul_adress);  // NEU V1.4
-            crsf.send_device_info(devName, CRSF_PARAM_COUNT);
+            // Firmware-Version als CRSF "Parameter Version Number"
+            // mitgeben (war zuvor fest 0x00, siehe Kommentar in
+            // crsf_esp32.cpp/send_device_info(); Fix aus v2.03
+            // uebernommen) - damit erkennen Konfiguratoren wie TBS Agent
+            // eine geaenderte Parameterstruktur zuverlaessig und lesen
+            // sie neu ein.
+            crsf.send_device_info(devName, CRSF_PARAM_COUNT, (uint8_t)(Version & 0xFF));
         }
         // ELRS LUA Script: Parameter lesen
         if (crsf.getDeviceReadReplyPending()) {
