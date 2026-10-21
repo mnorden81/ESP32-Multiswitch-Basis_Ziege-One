@@ -1,5 +1,7 @@
 /*
  * webui.h  –  WiFi-Weboberfläche für ESP32-MultiSwitch  v2.00
+ * v2.05: OTA-Upload, JSON-Helfer und /rc_common.js aus RC_Common
+ * (src/RC_Common/web_common.h).
  */
 
 #pragma once
@@ -8,7 +10,6 @@
 #include <stdlib.h>
 #include <WiFi.h>
 #include <WebServer.h>
-#include <Update.h>          // NEU v2.00: Firmware-Update per WLAN (OTA), siehe handleOtaUpdate*()
 
 // ============================================================
 //  Forward-Deklarationen
@@ -361,6 +362,7 @@ main{max-width:560px;margin:0 auto;padding:20px 14px 60px}
   </div>
 </main>
 
+<script src="/rc_common.js"></script>
 <script>
 let state={},curOut=-1,pollTimer=null;
 const $ = id => document.getElementById(id);
@@ -778,49 +780,15 @@ async function importConfigData(data){
 }
 
 // ─── Firmware-Update per WLAN (OTA, NEU v2.00) ─────────────────────────
-// Echtes multipart/form-data an /api/otaupdate (siehe handleOtaUpdateData()/
-// handleOtaUpdate() in webui.h) - Fortschritt per XHR-upload.onprogress,
+// Echtes multipart/form-data an /api/otaupdate (RC_Common web_common.cpp) - Fortschritt per XHR-upload.onprogress,
 // da fetch() das (noch) nicht zuverlaessig unterstuetzt. Bei Erfolg startet
 // das Modul selbst neu; die Antwort trifft trotzdem noch ein, bevor die
 // Verbindung tatsaechlich abbricht.
 function uploadOtaFile(file){
-  if(!file) return;
-  if(!confirm('Firmware-Update mit "'+file.name+'" starten? Waehrend des '+
-              'Uploads die Spannungsversorgung des Moduls NICHT unterbrechen '+
-              '- moeglichst ueber ESC/Akku bestromt, nicht nur ueber USB. '+
-              'Das Modul startet danach automatisch neu.')){
-    $('ota-file').value=''; return;
-  }
-  const status=$('ota-status');
-  status.textContent='Hochladen … (0%)';
-
-  const fd=new FormData();
-  fd.append('file',file,file.name);
-
-  const x=new XMLHttpRequest();
-  x.open('POST','/api/otaupdate',true);
-  x.upload.onprogress=function(e){
-    if(e.lengthComputable) status.textContent='Hochladen … ('+Math.round(e.loaded/e.total*100)+'%)';
-  };
-  x.onload=function(){
-    try{
-      const d=JSON.parse(x.responseText);
-      if(d.ok){
-        status.textContent='Update erfolgreich ('+d.size+' Bytes) – Modul startet neu …';
-      } else {
-        status.textContent='Fehler ('+d.error+')';
-        alert('Update fehlgeschlagen ('+d.error+').');
-      }
-    }catch(e){ status.textContent='Fehler beim Hochladen'; alert('Update fehlgeschlagen.'); }
-  };
-  x.onerror=function(){
-    // Kann auch bedeuten, dass das Update erfolgreich war und das Modul
-    // bereits neu startet, bevor die Antwort ankam - fuer den Nutzer nicht
-    // unterscheidbar von einem echten Verbindungsfehler.
-    status.textContent='Verbindung unterbrochen – Update war evtl. trotzdem erfolgreich (neu verbinden und prüfen).';
-  };
-  x.send(fd);
-  $('ota-file').value='';
+  // v2.05: gemeinsamer Upload aus /rc_common.js
+  rcOtaUpload(file,$('ota-status'),$('ota-file'),function(ok,err){
+    if(!ok) alert('Update fehlgeschlagen ('+rcErrText(err)+').');
+  });
 }
 
 function startPoll(){pollTimer=setInterval(pollDebug,800);}
@@ -880,94 +848,7 @@ static void sendJson(const String& json) {
 static void sendOk()  { sendJson("{\"ok\":true}"); }
 static void send404() { webServer.send(404,"application/json","{\"error\":\"not found\"}"); }
 
-static String jsonEscape(const char* s) {
-  String out;
-  if (!s) return out;
-  while (*s) {
-    switch (*s) {
-      case '\\': out += "\\\\"; break;
-      case '"':  out += "\\\""; break;
-      case '\b': out += "\\b"; break;
-      case '\f': out += "\\f"; break;
-      case '\n': out += "\\n"; break;
-      case '\r': out += "\\r"; break;
-      case '\t': out += "\\t"; break;
-      default: out += *s; break;
-    }
-    s++;
-  }
-  return out;
-}
-
-static bool jsonExtractInt(const String& body, const char* key, int& out) {
-  String token = "\"" + String(key) + "\"";
-  int p = body.indexOf(token);
-  if (p < 0) return false;
-  p = body.indexOf(':', p + token.length());
-  if (p < 0) return false;
-  p++;
-  while (p < (int)body.length() && isspace((unsigned char)body[p])) p++;
-  char* endPtr = nullptr;
-  long v = strtol(body.c_str() + p, &endPtr, 10);
-  if (endPtr == body.c_str() + p) return false;
-  out = (int)v;
-  return true;
-}
-
-static bool jsonExtractBool(const String& body, const char* key, bool& out) {
-  String token = "\"" + String(key) + "\"";
-  int p = body.indexOf(token);
-  if (p < 0) return false;
-  p = body.indexOf(':', p + token.length());
-  if (p < 0) return false;
-  p++;
-  while (p < (int)body.length() && isspace((unsigned char)body[p])) p++;
-  if (body.startsWith("true", p)) {
-    out = true;
-    return true;
-  }
-  if (body.startsWith("false", p)) {
-    out = false;
-    return true;
-  }
-  return false;
-}
-
-static bool jsonExtractString(const String& body, const char* key, String& out) {
-  String token = "\"" + String(key) + "\"";
-  int p = body.indexOf(token);
-  if (p < 0) return false;
-  p = body.indexOf(':', p + token.length());
-  if (p < 0) return false;
-  p++;
-  while (p < (int)body.length() && isspace((unsigned char)body[p])) p++;
-  if (p >= (int)body.length() || body[p] != '"') return false;
-  p++;
-  out = "";
-  bool esc = false;
-  while (p < (int)body.length()) {
-    char c = body[p++];
-    if (esc) {
-      switch (c) {
-        case '"': out += '"'; break;
-        case '\\': out += '\\'; break;
-        case '/': out += '/'; break;
-        case 'b': out += '\b'; break;
-        case 'f': out += '\f'; break;
-        case 'n': out += '\n'; break;
-        case 'r': out += '\r'; break;
-        case 't': out += '\t'; break;
-        default: out += c; break;
-      }
-      esc = false;
-      continue;
-    }
-    if (c == '\\') { esc = true; continue; }
-    if (c == '"') return true;
-    out += c;
-  }
-  return false;
-}
+// v2.05: JSON-Helfer aus RC_Common (webJsonEscape/-Int/-Bool/-String)
 
 // ============================================================
 //  RC-System-Name
@@ -992,7 +873,7 @@ static void handleStatus() {
     j += "\"version\":\"v" + String(Version / 100) + "." + String(Version % 100 < 10 ? "0" : "") + String(Version % 100) + "\",";
     j += "\"bus_ok\":" + String(BUS_OK ? "true" : "false") + ",";
     j += "\"rc_system\":" + String(RC_System_boot) + ",";
-  j += "\"rc_system_name\":\"" + jsonEscape(rcName(RC_System_boot)) + "\",";
+  j += "\"rc_system_name\":\"" + webJsonEscape(rcName(RC_System_boot)) + "\",";
         j += "\"rc_system_boot\":" + String(RC_System_boot) + ",";
 
     // Einkanal
@@ -1004,7 +885,7 @@ static void handleStatus() {
     for (int i = 0; i < 8; i++) {
         if (i) j += ",";
         j += "{";
-        j += "\"name\":\"" + jsonEscape(Ausgang_Name[i]) + "\",";
+        j += "\"name\":\"" + webJsonEscape(Ausgang_Name[i]) + "\",";
         j += "\"on\":"    + String(Ausgang[i] ? "true" : "false") + ",";
         j += "\"override\":" + String(g_manual_override[i] ? "true" : "false") + ",";
         j += "\"kanal\":" + String(Ausgang_Kanal[i]) + ",";
@@ -1051,10 +932,10 @@ static void handleConfig() {
         j += "\"crsf_channel\":"  + String(CRSF_Channel)   + ",";
         j += "\"einkanal_mode\":" + String(einkanal_mode)  + ",";
         j += "\"modul_adress\":"  + String(modul_adress)   + ",";
-      j += "\"dnam\":\""        + jsonEscape(g_device_name)  + "\",";
-      j += "\"ssid\":\""        + jsonEscape(g_wifi_ssid)    + "\",";
-      j += "\"pass\":\""        + jsonEscape(g_wifi_pass)    + "\",";
-      j += "\"ip\":\""          + jsonEscape(g_wifi_ip)      + "\",";
+      j += "\"dnam\":\""        + webJsonEscape(g_device_name)  + "\",";
+      j += "\"ssid\":\""        + webJsonEscape(g_wifi_ssid)    + "\",";
+      j += "\"pass\":\""        + webJsonEscape(g_wifi_pass)    + "\",";
+      j += "\"ip\":\""          + webJsonEscape(g_wifi_ip)      + "\",";
         j += "\"wifi_auto\":"      + String(g_wifi_auto ? "true" : "false") + ",";
         j += "\"wifi_auto_timeout\":" + String(g_wifi_auto_timeout) + ",";
         j += "\"wifi_always_on\":" + String(g_wifi_always_on ? "true" : "false");
@@ -1068,40 +949,40 @@ static void handleConfig() {
     bool changed = false;
 
     int v = 0;
-    if (jsonExtractInt(body, "rc_system", v)) {
+    if (webJsonInt(body, "rc_system", v)) {
       v = constrain(v, 0, 4);
       if (v != RC_System) { RC_System = v; changed = true; }
     }
-    if (jsonExtractInt(body, "crsf_channel", v)) {
+    if (webJsonInt(body, "crsf_channel", v)) {
       if ((v >= 0 && v <= 15) || v == 999) {
         if (v != CRSF_Channel) { CRSF_Channel = v; changed = true; }
       }
     }
-    if (jsonExtractInt(body, "einkanal_mode", v)) {
+    if (webJsonInt(body, "einkanal_mode", v)) {
       bool valid = (v == 0 || v == 999 || (v >= 10 && v <= 13));
       if (valid && v != einkanal_mode) { einkanal_mode = v; changed = true; }
     }
-    if (jsonExtractInt(body, "modul_adress", v)) {
+    if (webJsonInt(body, "modul_adress", v)) {
       v = constrain(v, 0, 20);
       if (v != modul_adress) { modul_adress = v; changed = true; }
     }
 
     // NEU v2.00: WLAN-Auto-Failsafe
     bool bv = false;
-    if (jsonExtractBool(body, "wifi_auto", bv)) {
+    if (webJsonBool(body, "wifi_auto", bv)) {
       if (bv != g_wifi_auto) { g_wifi_auto = bv; changed = true; }
     }
-    if (jsonExtractInt(body, "wifi_auto_timeout", v)) {
+    if (webJsonInt(body, "wifi_auto_timeout", v)) {
       v = constrain(v, 5, 240);
       if ((uint16_t)v != g_wifi_auto_timeout) { g_wifi_auto_timeout = (uint16_t)v; changed = true; }
     }
     // NEU v2.02: WLAN dauerhaft an
-    if (jsonExtractBool(body, "wifi_always_on", bv)) {
+    if (webJsonBool(body, "wifi_always_on", bv)) {
       if (bv != g_wifi_always_on) { g_wifi_always_on = bv; changed = true; }
     }
 
     String s;
-    if (jsonExtractString(body, "dnam", s)) {
+    if (webJsonString(body, "dnam", s)) {
       s = s.substring(0, sizeof(g_device_name) - 1);
       if (strncmp(g_device_name, s.c_str(), sizeof(g_device_name) - 1) != 0) {
         strncpy(g_device_name, s.c_str(), sizeof(g_device_name) - 1);
@@ -1109,7 +990,7 @@ static void handleConfig() {
         changed = true;
       }
     }
-    if (jsonExtractString(body, "ssid", s)) {
+    if (webJsonString(body, "ssid", s)) {
       s = s.substring(0, sizeof(g_wifi_ssid) - 1);
       if (strncmp(g_wifi_ssid, s.c_str(), sizeof(g_wifi_ssid) - 1) != 0) {
         strncpy(g_wifi_ssid, s.c_str(), sizeof(g_wifi_ssid) - 1);
@@ -1117,7 +998,7 @@ static void handleConfig() {
         changed = true;
       }
     }
-    if (jsonExtractString(body, "pass", s)) {
+    if (webJsonString(body, "pass", s)) {
       s = s.substring(0, sizeof(g_wifi_pass) - 1);
       if (strncmp(g_wifi_pass, s.c_str(), sizeof(g_wifi_pass) - 1) != 0) {
         strncpy(g_wifi_pass, s.c_str(), sizeof(g_wifi_pass) - 1);
@@ -1125,7 +1006,7 @@ static void handleConfig() {
         changed = true;
       }
     }
-    if (jsonExtractString(body, "ip", s)) {
+    if (webJsonString(body, "ip", s)) {
       IPAddress ip;
       if (ip.fromString(s)) {
         s = s.substring(0, sizeof(g_wifi_ip) - 1);
@@ -1151,19 +1032,19 @@ static void handleSwitch() {
 
     // ch
     int ch = -1;
-    jsonExtractInt(body, "ch", ch);
+    webJsonInt(body, "ch", ch);
     if (ch < 0 || ch > 7) { send404(); return; }
 
     // release
     bool release = false;
-    if (jsonExtractBool(body, "release", release) && release) {
+    if (webJsonBool(body, "release", release) && release) {
         g_manual_override[ch] = false;
         sendOk(); return;
     }
 
     // on/off
     bool on = false;
-    if (!jsonExtractBool(body, "on", on)) { send404(); return; }
+    if (!webJsonBool(body, "on", on)) { send404(); return; }
     g_manual_override[ch] = true;
     g_manual_state[ch]    = on;
     sendOk();
@@ -1177,18 +1058,18 @@ static void handleOutput() {
     if (!webServer.hasArg("plain")) { send404(); return; }
     String body = webServer.arg("plain");
     int ch = -1;
-    jsonExtractInt(body, "ch", ch);
+    webJsonInt(body, "ch", ch);
     if (ch < 0 || ch > 7) { send404(); return; }
     bool changed = false;
     int val = 0;
-    if (jsonExtractInt(body, "kanal", val)) {
+    if (webJsonInt(body, "kanal", val)) {
       if (val >= 0 && val <= 55 && val != Ausgang_Kanal[ch]) {
         Ausgang_Kanal[ch] = val;
         changed = true;
       }
     }
     int pwm_old = pwm_wert[ch];
-    if (jsonExtractInt(body, "pwm", val)) {
+    if (webJsonInt(body, "pwm", val)) {
       bool validPwm = (val >= 0 && val <= 255) || (val >= 300 && val <= 315);
       if (validPwm && val != pwm_wert[ch]) {
         pwm_wert[ch] = val;
@@ -1200,7 +1081,7 @@ static void handleOutput() {
         !(pwm_old >= 200 && pwm_old <= 207)) {
         einkanal_Data |= (1 << ch);
     }
-    if (jsonExtractInt(body, "mode", val)) {
+    if (webJsonInt(body, "mode", val)) {
       val = constrain(val, 0, 0xFFFF);
       if (val != mode[ch]) {
         mode[ch] = val;
@@ -1208,7 +1089,7 @@ static void handleOutput() {
       }
     }
     String nm;
-    if (jsonExtractString(body, "name", nm)) {
+    if (webJsonString(body, "name", nm)) {
       nm = nm.substring(0, 16);
       if (strncmp(Ausgang_Name[ch], nm.c_str(), 16) != 0) {
         strncpy(Ausgang_Name[ch], nm.c_str(), 16);
@@ -1263,94 +1144,9 @@ static void handleWifi() {
     if (!webServer.hasArg("plain")) { send404(); return; }
     String body = webServer.arg("plain");
     bool enable = false;
-    if (!jsonExtractBool(body, "enable", enable)) { send404(); return; }
+    if (!webJsonBool(body, "enable", enable)) { send404(); return; }
     if (enable) webui_enableAP(); else webui_disableAP();
     sendOk();
-}
-
-// ============================================================
-//  API: /api/otaupdate  (NEU v2.00, uebernommen aus dem Soundmodul-Projekt)
-// ============================================================
-// Firmware-Update direkt per WLAN: .bin-Datei per multipart/form-data hoch-
-// laden, wird ueber die Arduino-"Update"-Bibliothek in das gerade INAKTIVE
-// OTA-Flash-Segment geschrieben (ota_0/ota_1 - siehe README, Abschnitt
-// "Partitionsschema"). Die aktuell laufende Firmware liegt im jeweils
-// ANDEREN Segment und bleibt waehrend des gesamten Uploads unangetastet:
-// schlaegt der Upload fehl oder wird er abgebrochen, bootet das Modul beim
-// naechsten Start einfach mit der bisherigen Firmware weiter (kein Bricking-
-// Risiko durch einen misslungenen Upload). Zwei-Handler-Muster wie beim
-// ESP32 WebServer fuer Datei-Uploads ueblich: handleOtaUpdateData() wird
-// waehrend des Uploads mehrfach aufgerufen (Callback-Argument von
-// webServer.on()), handleOtaUpdate() genau einmal danach fuer die Antwort.
-static bool     otaFailed  = false;
-static String   otaErrCode;
-static uint32_t otaBytes   = 0;
-static bool     otaStarted = false;
-
-static void handleOtaUpdateData() {
-    HTTPUpload& upload = webServer.upload();
-
-    if (upload.status == UPLOAD_FILE_START) {
-        otaFailed = false; otaErrCode = ""; otaBytes = 0; otaStarted = false;
-        Serial.printf("[OTA] Start: %s\n", upload.filename.c_str());
-        // Bei multipart/form-data ist die Gesamtgroesse vorab nicht bekannt -
-        // UPDATE_SIZE_UNKNOWN laesst die Bibliothek bis zum Ende des jeweiligen
-        // OTA-Segments schreiben; die eigentliche Vollstaendigkeitspruefung
-        // passiert bei Update.end() unten.
-        if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
-            otaFailed = true; otaErrCode = "update_begin";
-            return;
-        }
-        otaStarted = true;
-
-    } else if (upload.status == UPLOAD_FILE_WRITE) {
-        if (otaFailed || !otaStarted) return; // vorheriger Fehler - Rest verwerfen
-        // Grobe Plausibilitaetspruefung am allerersten Haeppchen: jede gueltige
-        // ESP32-Firmware beginnt mit dem Magic-Byte 0xE9. Faengt eine versehent-
-        // lich falsche Datei (z.B. eine JSON-Konfigurationsdatei) frueh ab,
-        // statt sie komplett hochzuladen und erst bei Update.end() abzulehnen.
-        if (otaBytes == 0 && upload.currentSize > 0 && upload.buf[0] != 0xE9) {
-            otaFailed = true; otaErrCode = "bad_file";
-            return;
-        }
-        size_t written = Update.write(upload.buf, upload.currentSize);
-        otaBytes += written;
-        if (written != upload.currentSize) {
-            otaFailed = true; otaErrCode = "flash_write"; // z.B. Segment voll
-        }
-
-    } else if (upload.status == UPLOAD_FILE_END || upload.status == UPLOAD_FILE_ABORTED) {
-        if (upload.status == UPLOAD_FILE_ABORTED) { otaFailed = true; otaErrCode = "aborted"; }
-        if (otaStarted) {
-            if (otaFailed) {
-                Update.abort();
-            } else if (!Update.end(true)) {
-                // "true" = neue Partition als bootfaehig markieren, aber nur wenn
-                // die empfangenen Bytes vollstaendig sind - schlaegt z.B. an, wenn
-                // die Datei kein vollstaendiges Firmware-Image ist oder mitten in
-                // der Uebertragung abgebrochen wurde, ohne dass ABORTED erkannt wird.
-                otaFailed = true; otaErrCode = "update_end";
-            } else {
-                Serial.printf("[OTA] Fertig: %u Bytes\n", (unsigned)otaBytes);
-            }
-        }
-    }
-}
-
-// Wird einmal aufgerufen, NACHDEM der Upload-Callback oben fertig ist -
-// schickt die JSON-Antwort und startet das Modul bei Erfolg neu. Die
-// Antwort wird per flush() explizit hinausgeschickt und dann kurz gewartet,
-// damit sie den Browser noch erreicht, BEVOR der Neustart die WLAN-
-// Verbindung (kurzzeitig) abbrechen laesst.
-static void handleOtaUpdate() {
-    if (otaFailed) {
-        webServer.send(200, "application/json", "{\"ok\":false,\"error\":\"" + otaErrCode + "\"}");
-        return;
-    }
-    sendJson("{\"ok\":true,\"size\":" + String(otaBytes) + "}");
-    webServer.client().flush();
-    delay(500);
-    ESP.restart();
 }
 
 // ============================================================
@@ -1413,7 +1209,8 @@ void webui_init() {
     webServer.on("/api/restart", HTTP_POST, handleRestart);
     webServer.on("/api/save",    HTTP_POST, handleSave);
     webServer.on("/api/wifi",    HTTP_POST, handleWifi);
-    webServer.on("/api/otaupdate", HTTP_POST, handleOtaUpdate, handleOtaUpdateData);
+    // v2.05: /api/otaupdate, /rc_common.js, /api/uartroles aus RC_Common
+    webCommonRegister(webServer, storageSave);
     // WebServer.begin() bewusst unabhaengig vom AP-Status: der Server lauscht
     // so schon, sobald der AP spaeter per Auto-Failsafe/manuell aktiviert wird
     // (kein erneutes .begin() noetig).

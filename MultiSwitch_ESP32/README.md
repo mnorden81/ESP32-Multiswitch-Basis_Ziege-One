@@ -1,8 +1,16 @@
-# ESP32-MultiSwitch v2.04
+# ESP32-MultiSwitch v2.05
 
 RC-gesteuerter 8-Kanal-Schalter für ESP32 mit Web-Interface.
 
 *v2.00 erstellt von: PiperPilot*
+
+## Änderungen v2.05 (gemeinsame Basis RC_Common)
+
+- **Gemeinsame Basis RC_Common 1.0.0** unter `src/RC_Common/` (identisch in allen ESP32-Projekten, siehe `src/RC_Common/README.md`): CRSF-Bibliothek 1.1.0, Lua-Menü als Tabelle, gemeinsame NVS-Schlüssel, WLAN-Failsafe, Status-LED, OTA-Upload. Der Ordner `src/CRSF_ESP32/` entfällt.
+- **Fix: SBUS-Zeitlimit.** Kommen 10 s lang keine SBUS-Frames (Stecker ab, Empfänger ohne Strom), gilt das Signal als weg: Ausgänge aus, WLAN-Auto-Failsafe kann greifen. Vorher blieb der letzte Zustand stehen.
+- **Status-LED (GPIO 2)** mit den gemeinsamen Mustern: aus = kein Signal, langsam = OK, schnell = Frames ohne RC-Link bzw. SBUS-Failsafe.
+- **NVS:** WLAN, Moduladresse und WLAN-Failsafe liegen unter den gemeinsamen Schlüsseln (`wip madr wfauto wftmo wfalways`). Die alten Werte werden beim ersten Start einmalig übernommen, die alten Schlüssel bleiben für ein Zurückspielen stehen.
+- Lua-Feld-IDs, Web-Oberfläche und Ausgangslogik sind unverändert.
 
 ## Änderungen v2.04 (gemeinsame CRSF-Bibliothek)
 
