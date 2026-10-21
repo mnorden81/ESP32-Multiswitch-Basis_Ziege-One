@@ -1,5 +1,5 @@
 /*
- * webui.h  –  WiFi-Weboberfläche für ESP32-MultiSwitch TXRX  v3.12
+ * webui.h  –  WiFi-Weboberfläche für ESP32-MultiSwitch TXRX  v3.13
  * NEU V3.00: MKan-Gruppen (2 zusaetzliche, unabhaengige Kanalquellen) -
  * siehe Kommentar bei MULTISW_NUM_GROUPS in MultiSwitch_ESP32_TXRX.ino.
  * NEU V3.10: bis zu 3 Konfigurationen (Kanal-Quelle + Blink/PWM) pro

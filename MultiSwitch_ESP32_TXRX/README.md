@@ -1,6 +1,12 @@
-# ESP32-MultiSwitch TXRX v3.12
+# ESP32-MultiSwitch TXRX v3.13
 
-Variante von v3.12 (`MultiSwitch_ESP32_V3/`) für die Platine **Multiswitch_TXRX** (ESP32 + ULN2803A). Einziger Unterschied zu V3: die Ausgangs-Pinbelegung (siehe Pin-Belegung unten). Alle Funktionen von V3 sind unverändert enthalten. **Nicht** auf der alten Platine (Ausgänge GPIO 18–27) verwenden – dafür `MultiSwitch_ESP32_V3/` nehmen.
+Variante von v3.13 (`MultiSwitch_ESP32_V3/`) für die Platine **Multiswitch_TXRX** (ESP32 + ULN2803A). Einziger Unterschied zu V3: die Ausgangs-Pinbelegung (siehe Pin-Belegung unten). Alle Funktionen von V3 sind unverändert enthalten. **Nicht** auf der alten Platine (Ausgänge GPIO 18–27) verwenden – dafür `MultiSwitch_ESP32_V3/` nehmen.
+
+## Änderungen v3.13 (gemeinsame CRSF-Bibliothek)
+
+- **CRSF-Code als gemeinsame Bibliothek** `src/CRSF_ESP32/` (CRSF_ESP32 v1.0.0, identisch mit dem Soundmodul und den anderen Multiswitch-Varianten; siehe `src/CRSF_ESP32/README.md`). Die Arduino-IDE kompiliert den Unterordner automatisch mit.
+- **Fixes laut CRSF-Spezifikation:** Der Empfangs-Parser verliert keine Frames mehr, die über zwei `loop()`-Durchläufe verteilt ankommen (vorher verloren und als CRC-Fehler gezählt). Link-Statistik-Felder korrekt zugeordnet, Command-CRC (0xBA) korrigiert, FOLDER-Eintrag ohne überzähliges Byte.
+- Versionsstring: "v3.13 ESP32 TXRX".
 
 ## Änderungen v3.12 (CRSF-Fix, übernommen aus v2.03)
 
