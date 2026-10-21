@@ -1,8 +1,17 @@
 /*
-    ESP32-MultiSwitch  v2.00
+    ESP32-MultiSwitch  v2.04
+   v2.04: CRSF-Code als gemeinsame Bibliothek, siehe AENDERUNGEN v2.04.
    v2.00 erstellt von: PiperPilot
    Basiert auf: ESP32-SBus-Switch 0.6   (Ziege-One / Der RC-Modellbauer)
    CRSF-Integration: ESP32-RC-Sound 0.43 (Ziege-One / Der RC-Modellbauer)
+
+ ÄNDERUNGEN v2.04 (gemeinsame CRSF-Bibliothek):
+   - CRSF-Code als gemeinsame Bibliothek src/CRSF_ESP32/ (CRSF_ESP32
+     v1.0.0, identisch mit Soundmodul und den anderen Varianten).
+   - Fix: Empfangs-Parser verliert keine Frames mehr, die ueber zwei
+     loop()-Durchlaeufe verteilt ankommen (vorher verloren und als
+     CRC-Fehler gezaehlt). Link-Statistik, Command-CRC und FOLDER-Laenge
+     laut CRSF-Spezifikation korrigiert.
 
  /////Projektbeschreibung////
  RC-gesteuerter 8-Kanal-Schalter/PWM-Ausgabemodul für ESP32. Empfängt
@@ -103,10 +112,10 @@
 #include <WiFi.h>
 #include <Preferences.h>
 #include "sbus.h"
-#include "crsf_esp32.h"
+#include "src/CRSF_ESP32/crsf_esp32.h"
 #include "blink_presets.h"
 
-constexpr uint16_t Version = 203; // 2.03
+constexpr uint16_t Version = 204; // 2.04 - gemeinsame CRSF-Bibliothek
 
 // ======== SBUS-Schwellen (benannte Konstanten) ==================
 static constexpr uint16_t SBUS_LOW_THRESHOLD  =  800;
