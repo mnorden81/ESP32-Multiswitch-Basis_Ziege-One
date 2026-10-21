@@ -108,7 +108,7 @@ Diese Version macht das Multiswitch für den **Multi-Device-Betrieb** am selben 
 ## Bibliotheken
 
 - Bolder Flight Systems SBUS 8.1.4
-- TinyGPSPlus 1.1.0 (wird von RC_Common mitkompiliert)
+- TinyGPSPlus 1.0.3 (wird von RC_Common mitkompiliert)
 - CRSF_ESP32 (https://github.com/Ziege-One/CRSF_ESP32)
 
 ## RC-System Werte

@@ -19,7 +19,7 @@ Dieses Repository enthält drei eigenständige, unabhängig voneinander baubare 
 
 Details, Änderungshistorie, Pin-Belegung und API stehen in der jeweiligen `README.md` im Projektordner.
 
-Der gemeinsame Code (CRSF-Bibliothek, Lua-Menü, NVS, WLAN-Failsafe, Status-LED, OTA) liegt in jedem Sketch-Ordner als identische Kopie von **RC_Common** unter `src/RC_Common/` (dieselbe Basis nutzen RC-Multiswitch C3/S3 und die Soundmodule, siehe `src/RC_Common/README.md`). Die Arduino-IDE kompiliert den Unterordner automatisch mit. Benötigt werden zusätzlich die Bibliotheken *Bolder Flight Systems SBUS* 8.1.4 und *TinyGPSPlus* 1.1.0 (RC_Common enthält die GPS-Rolle der anderen Module; der Multiswitch nutzt sie nicht, die Datei wird aber mitkompiliert).
+Der gemeinsame Code (CRSF-Bibliothek, Lua-Menü, NVS, WLAN-Failsafe, Status-LED, OTA) liegt in jedem Sketch-Ordner als identische Kopie von **RC_Common** unter `src/RC_Common/` (dieselbe Basis nutzen RC-Multiswitch C3/S3 und die Soundmodule, siehe `src/RC_Common/README.md`). Die Arduino-IDE kompiliert den Unterordner automatisch mit. Benötigt werden zusätzlich die Bibliotheken *Bolder Flight Systems SBUS* 8.1.4 und *TinyGPSPlus* 1.0.3 (RC_Common enthält die GPS-Rolle der anderen Module; der Multiswitch nutzt sie nicht, die Datei wird aber mitkompiliert).
 
 Die GitHub-CI prüft bei jedem Push die drei Kopien gegen `MANIFEST.sha256`, führt die Host-Tests von RC_Common aus und kompiliert alle drei Sketches (ESP32-Core 3.0.7).
 
