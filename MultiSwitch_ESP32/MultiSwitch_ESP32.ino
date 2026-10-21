@@ -5,7 +5,7 @@
    Basiert auf: ESP32-SBus-Switch 0.6   (Ziege-One / Der RC-Modellbauer)
    CRSF-Integration: ESP32-RC-Sound 0.43 (Ziege-One / Der RC-Modellbauer)
 
- ÄNDERUNGEN v2.05 (gemeinsame Basis RC_Common 1.0.0):
+ ÄNDERUNGEN v2.05 (gemeinsame Basis RC_Common 1.1.0):
    - Gemeinsamer Code aller ESP32-Module liegt jetzt in src/RC_Common/
      (identische Kopie in jedem Projekt, siehe src/RC_Common/README.md):
      CRSF-Bibliothek 1.1.0, Lua-Menue als Tabelle, NVS-Schluessel,

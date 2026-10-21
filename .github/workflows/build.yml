@@ -1,6 +1,6 @@
 name: Build
 
-# Gemeinsame CI aller ESP32-Module (RC_Common 1.0.0):
+# Gemeinsame CI aller ESP32-Module (RC_Common 1.1.0):
 #   1. Jede Kopie von src/RC_Common/ gegen MANIFEST.sha256 pruefen und die
 #      Host-Tests (CRSF, Lua-Menue, LED, Einstellungen) ausfuehren.
 #   2. Alle drei Sketches mit festem Core kompilieren und die Images
