@@ -46,7 +46,7 @@ jobs:
           arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
           arduino-cli core update-index
           arduino-cli core install esp32:esp32@3.0.7
-          arduino-cli lib install "Bolder Flight Systems SBUS@8.1.4"
+          arduino-cli lib install "Bolder Flight Systems SBUS@8.1.4" "TinyGPSPlus@1.1.0"
 
       - name: Compile
         run: arduino-cli compile --fqbn esp32:esp32:esp32 --warnings default --output-dir build ${{ matrix.sketch }}
