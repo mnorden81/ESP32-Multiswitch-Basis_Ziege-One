@@ -1,9 +1,29 @@
 /*
-    ESP32-MultiSwitch  v2.04
+    ESP32-MultiSwitch  v2.05
    v2.04: CRSF-Code als gemeinsame Bibliothek, siehe AENDERUNGEN v2.04.
    v2.00 erstellt von: PiperPilot
    Basiert auf: ESP32-SBus-Switch 0.6   (Ziege-One / Der RC-Modellbauer)
    CRSF-Integration: ESP32-RC-Sound 0.43 (Ziege-One / Der RC-Modellbauer)
+
+ ÄNDERUNGEN v2.05 (gemeinsame Basis RC_Common 1.1.0):
+   - Gemeinsamer Code aller ESP32-Module liegt jetzt in src/RC_Common/
+     (identische Kopie in jedem Projekt, siehe src/RC_Common/README.md):
+     CRSF-Bibliothek 1.1.0, Lua-Menue als Tabelle, NVS-Schluessel,
+     WLAN-Failsafe, Status-LED, OTA-Upload, JSON-Helfer. Der Ordner
+     src/CRSF_ESP32/ entfaellt.
+   - FIX: SBUS-Zeitlimit (wie RC-Multiswitch v4.03). Kommen 10 s lang gar
+     keine SBUS-Frames (Stecker ab, Empfaenger ohne Strom), gilt das
+     Signal als weg: BUS_OK wird false, die Ausgaenge gehen aus und das
+     WLAN-Auto-Failsafe kann greifen. Vorher blieb ohne Frames der letzte
+     Zustand stehen. Siehe checkSbusTimeout().
+   - Status-LED (GPIO 2) mit den gemeinsamen Mustern: aus = kein Signal,
+     langsam 500/500 ms = OK, schnell 100/100 ms = Frames ohne RC-Link bzw.
+     SBUS-Failsafe.
+   - Lua-Menue als Tabelle (buildLuaMenu()), gleiche Feld-IDs 0-80.
+   - NVS: gemeinsame Schluessel wip, madr, wfauto, wftmo, wfalways
+     (RC_Common settings_common.h). Beim ersten Start werden die alten
+     Werte (ip, mod_adr, wauto, watout, walways) einmalig uebernommen; die
+     alten Schluessel bleiben fuer ein Zurueckspielen stehen.
 
  ÄNDERUNGEN v2.04 (gemeinsame CRSF-Bibliothek):
    - CRSF-Code als gemeinsame Bibliothek src/CRSF_ESP32/ (CRSF_ESP32
@@ -104,18 +124,25 @@
 // ======== Bibliotheken ==========================================
 /*
   Bolder Flight Systems SBUS  8.1.4   (für RC_System 0-3)
-  CRSF_ESP32  Ziege-One               (für RC_System 4)
-    https://github.com/Ziege-One/CRSF_ESP32
+  RC_Common 1.0.0 im Sketch-Ordner src/RC_Common/ (v2.05), enthaelt
+    CRSF_ESP32 1.1.0, Basis https://github.com/Ziege-One/CRSF_ESP32
 */
 
 #include <Arduino.h>
 #include <WiFi.h>
 #include <Preferences.h>
 #include "sbus.h"
-#include "src/CRSF_ESP32/crsf_esp32.h"
 #include "blink_presets.h"
+// v2.05: gemeinsame Basis aller ESP32-Module
+#include "src/RC_Common/rc_common.h"
+#include "src/RC_Common/CRSF_ESP32/crsf_esp32.h"
+#include "src/RC_Common/lua_menu.h"
+#include "src/RC_Common/settings_common.h"
+#include "src/RC_Common/status_led.h"
+#include "src/RC_Common/wifi_failsafe.h"
+#include "src/RC_Common/web_common.h"
 
-constexpr uint16_t Version = 204; // 2.04 - gemeinsame CRSF-Bibliothek
+constexpr uint16_t Version = 205; // 2.05 - gemeinsame Basis RC_Common
 
 // ======== SBUS-Schwellen (benannte Konstanten) ==================
 static constexpr uint16_t SBUS_LOW_THRESHOLD  =  800;
@@ -220,7 +247,7 @@ uint16_t g_wifi_auto_timeout = 60;   // Sekunden, gueltiger Bereich 5-240
 // uebersprungen, siehe wifiFailsafeCheck() weiter unten. Anders als beim
 // Soundmodul gibt es hier keinen Sofort-Schalter aus dem CRSF-Menue heraus -
 // Feld 80 unten wirkt wie 78/79 rein persistierend, kein Aufruf von
-// webui_enableAP() aus crsfWriteParam() heraus (siehe Kommentar dort).
+// webui_enableAP() aus luaSetWifiAlways() heraus (siehe Kommentar dort).
 // Default AN (true), auch fuer Bestandsgeraete beim ersten Boot nach einem
 // Firmware-Update (siehe Migrations-Default in nvsLoad() unten:
 // p.getBool("walways", true)).
@@ -232,13 +259,42 @@ static bool nvsSaveScheduled = false;
 static unsigned long nvsSaveDueMs = 0;
 static constexpr unsigned long NVS_SAVE_DEBOUNCE_MS = 500;
 
+// v2.05: WLAN, Moduladresse und WLAN-Failsafe liegen unter den
+// gemeinsamen RC_Common-Schluesseln, siehe src/RC_Common/settings_common.h
+static void copyStr(char* dst, const char* src, size_t len) {
+    strncpy(dst, src, len - 1);
+    dst[len - 1] = '\0';
+}
+
+static void commonToSettings(RcCommonSettings& s) {
+    memset(&s, 0, sizeof(s));
+    copyStr(s.ssid,    g_wifi_ssid,   sizeof(s.ssid));
+    copyStr(s.pass,    g_wifi_pass,   sizeof(s.pass));
+    copyStr(s.ip,      g_wifi_ip,     sizeof(s.ip));
+    copyStr(s.devName, g_device_name, sizeof(s.devName));
+    s.moduleAddr  = modul_adress;
+    s.wifiAuto    = g_wifi_auto;
+    s.wifiTimeout = g_wifi_auto_timeout;
+    s.wifiAlways  = g_wifi_always_on;
+}
+
+static void settingsToCommon(const RcCommonSettings& s) {
+    copyStr(g_wifi_ssid,   s.ssid,    sizeof(g_wifi_ssid));
+    copyStr(g_wifi_pass,   s.pass,    sizeof(g_wifi_pass));
+    copyStr(g_wifi_ip,     s.ip,      sizeof(g_wifi_ip));
+    copyStr(g_device_name, s.devName, sizeof(g_device_name));
+    modul_adress        = s.moduleAddr;
+    g_wifi_auto         = s.wifiAuto;
+    g_wifi_auto_timeout = s.wifiTimeout;
+    g_wifi_always_on    = s.wifiAlways;
+}
+
 static void nvsWriteNow() {
     Preferences p;
     p.begin("msw", false);
     p.putInt("rc_sys",  RC_System);
     p.putInt("crsf_ch", CRSF_Channel);
     p.putInt("ek_mode", einkanal_mode);
-    p.putInt("mod_adr", modul_adress);
     for (int i = 0; i < 8; i++) {
         char key[4];
         snprintf(key, sizeof(key), "ak%d", i); p.putInt(key, Ausgang_Kanal[i]);
@@ -246,13 +302,10 @@ static void nvsWriteNow() {
         snprintf(key, sizeof(key), "mo%d", i); p.putInt(key, mode[i]);
         snprintf(key, sizeof(key), "nm%d", i); p.putString(key, Ausgang_Name[i]);
     }
-    p.putString("ssid", g_wifi_ssid);
-    p.putString("pass", g_wifi_pass);
-    p.putString("ip",   g_wifi_ip);
-    p.putString("dnam", g_device_name);   // NEU V1.4
-    p.putBool("wauto",  g_wifi_auto);         // NEU v2.00
-    p.putUInt("watout", g_wifi_auto_timeout); // NEU v2.00
-    p.putBool("walways", g_wifi_always_on);   // NEU v2.02
+    // v2.05: gemeinsame Schluessel aus RC_Common (settings_common.h)
+    RcCommonSettings s;
+    commonToSettings(s);
+    rcSettingsSave(p, s);
     p.end();
     nvsDirty = false;
     nvsSaveScheduled = false;
@@ -285,7 +338,6 @@ static void nvsLoad() {
     RC_System     = p.getInt("rc_sys",  0);
     CRSF_Channel  = p.getInt("crsf_ch", 4);
     einkanal_mode = p.getInt("ek_mode", 0);
-    modul_adress  = p.getInt("mod_adr", 0);
     for (int i = 0; i < 8; i++) {
         char key[4];
         snprintf(key, sizeof(key), "ak%d", i); Ausgang_Kanal[i] = p.getInt(key, i);
@@ -295,28 +347,22 @@ static void nvsLoad() {
         String nm = p.getString(key, Ausgang_Name[i]);
         strncpy(Ausgang_Name[i], nm.c_str(), 16); Ausgang_Name[i][16] = '\0';
     }
-    String s    = p.getString("ssid", g_wifi_ssid);
-    String pw   = p.getString("pass", g_wifi_pass);
-    String ip   = p.getString("ip",   g_wifi_ip);
-    String dnam = p.getString("dnam", g_device_name);  // NEU V1.4
-    strncpy(g_wifi_ssid,    s.c_str(),    sizeof(g_wifi_ssid)-1);
-    strncpy(g_wifi_pass,    pw.c_str(),   sizeof(g_wifi_pass)-1);
-    strncpy(g_wifi_ip,      ip.c_str(),   sizeof(g_wifi_ip)-1);
-    strncpy(g_device_name,  dnam.c_str(), sizeof(g_device_name)-1);
-    // Migrations-Default seit v2.01 bewusst true (nicht false) - siehe
-    // Kommentar bei g_wifi_auto weiter oben: ein Geraet, dessen NVS den
-    // Schluessel "wauto" noch nicht kennt (Update von vor v2.01), soll den
-    // neuen Default ("an") automatisch bekommen.
-    g_wifi_auto         = p.getBool("wauto",  true);  // NEU v2.00, Default AN seit v2.01
-    g_wifi_auto_timeout = p.getUInt("watout", 60);    // NEU v2.00
-    if (g_wifi_auto_timeout < 5 || g_wifi_auto_timeout > 240) g_wifi_auto_timeout = 60;
-    // Migrations-Default seit v2.02 bewusst true - siehe Kommentar bei
-    // g_wifi_always_on weiter oben.
-    g_wifi_always_on = p.getBool("walways", true);    // NEU v2.02
+    // v2.05: gemeinsame Schluessel (RC_Common). Fehlen sie (erster Start
+    // nach dem Update), werden die alten Schluessel einmalig uebernommen.
+    // Defaults wie bisher: WLAN-Auto-Failsafe und "dauerhaft an" AN (siehe
+    // Kommentare bei g_wifi_auto/g_wifi_always_on).
+    RcCommonSettings s;
+    commonToSettings(s);
+    bool migrated = rcSettingsLoad(p, s, nullptr);
+    settingsToCommon(s);
     p.end();
     nvsDirty = false;
     nvsSaveScheduled = false;
     Serial.println("NVS geladen.");
+    if (migrated) {
+        nvsWriteNow();
+        Serial.println("NVS: Einstellungen auf die RC_Common-Schluessel uebernommen.");
+    }
 }
 
 static void nvsReset() {
@@ -338,20 +384,24 @@ static void nvsReset() {
 void storageSave() { nvsFlushPending(); }
 
 // ======== Status-LED ============================================
-static unsigned long ledPrevMs = 0;
-static bool          ledState  = false;
+// v2.05: gemeinsame Muster aus RC_Common (status_led.h): aus = kein
+// Signal, langsam = OK, schnell = Frames ohne RC-Link bzw. SBUS-Failsafe.
+// Reine Anzeige - aendert weder BUS_OK noch das Ausgangsverhalten.
+static unsigned long lastSbusFrameMs = 0;
+static StatusLed statusLed;   // GPIO 2
 
 static void updateLed() {
-    if (!BUS_OK) {
-        digitalWrite(LedPin, LOW);
-        return;
-    }
     unsigned long now = millis();
-    if (now - ledPrevMs >= 500) {
-        ledPrevMs = now;
-        ledState  = !ledState;
-        digitalWrite(LedPin, ledState ? HIGH : LOW);
-    }
+    const LinkStatistics& ls = crsf.getLinkStatistics();
+    StatusLedInput in = {};
+    in.crsf            = (RC_System_boot == 4);
+    in.busOk           = BUS_OK;
+    in.lastRcFrameMs   = crsf.getLastRcFrameMs();
+    in.linkStatsMs     = ls.lastUpdate;
+    in.uplinkLQ        = ls.uplinkLQ;
+    in.lastSbusFrameMs = lastSbusFrameMs;
+    in.sbusFailsafe    = sbus_data.failsafe;
+    statusLed.update(statusLedMode(in, now), now);
 }
 
 // ======== CRSF-Failsafe =========================================
@@ -360,6 +410,17 @@ static void updateLed() {
 static void checkCrsfTimeout() {
     if (RC_System_boot != 4) return;
     if (millis() - lastCrsfPacket > CRSF_TIMEOUT_MS) {
+        BUS_OK = false;
+    }
+}
+
+// ======== SBUS-Zeitlimit (NEU v2.05, wie RC-Multiswitch v4.03) ====
+// Ohne SBUS-Frames (nicht nur Failsafe-Bit) gilt das Signal nach 10 s als
+// weg. lastSbusFrameMs wird beim Empfang jedes Frames gesetzt (loop()).
+static constexpr unsigned long SBUS_TIMEOUT_MS = 10000;
+static void checkSbusTimeout() {
+    if (RC_System_boot == 4) return;
+    if (lastSbusFrameMs == 0 || millis() - lastSbusFrameMs > SBUS_TIMEOUT_MS) {
         BUS_OK = false;
     }
 }
@@ -481,9 +542,7 @@ static void einkanalFunctionSBUS(uint16_t channel) {
 //   78: Sel  "Auto-Failsafe"  Aus;Ein  -> g_wifi_auto
 //   79: U8   "Auto Timeout"   5-240 s  -> g_wifi_auto_timeout
 //   80: Sel  "Dauerhaft an"   Aus;Ein  -> g_wifi_always_on
-// Total: 5+8*9+4=81 Parameter (0..80)
-
-static constexpr uint8_t CRSF_PARAM_COUNT = 80;
+// Total: 5+8*9+4=81 Parameter (0..80), Tabelle siehe buildLuaMenu()
 
 // ── CRSF-Geraeteadresse + Ping-Slot aus der WM-Adresse (uebernommen aus Soundmodul v1.24) ──
 // Adresse = 0xC0 + modul_adress; Slot = (Adresse-0xC0)*2; Antwort erst im eigenen
@@ -517,182 +576,111 @@ static uint8_t getPwmModus(int x) {
     return (pwm_wert[x] >= 200 && pwm_wert[x] <= 207) ? 1 : 0;
 }
 
-static void crsfSendParam(uint8_t idx) {
-    char buf[32];
-    const bool isCrsf = (RC_System_boot == 4);
+// ── Lua-Menue als Tabelle (v2.05, RC_Common lua_menu.h) ──────────────
+// Jeder Eintrag steht einmal in buildLuaMenu(), Senden und Schreiben
+// laufen generisch ueber luaMenu. Lese-/Schreibfunktionen bekommen als
+// Argument die Ausgang-Nummer. Schreiben ist auf min/max der gerade
+// gesendeten Ansicht begrenzt.
+static LuaItem luaItems[90];
+static LuaMenu luaMenu(luaItems, 90);
+static char    luaOutName[8][12];   // "Ausgang 1".."Ausgang 8"
 
-    if (idx == 0) {
-        crsf.send_param_response_CRSF_FOLDER(0, 0, "",
-            {1,2,5,14,23,32,41,50,59,68,77});
-    } else if (idx == 1) {
-        crsf.send_param_response_CRSF_INFO(1, 0, "Version", "v1.42 ESP32");
-    } else if (idx == 2) {
-        crsf.send_param_response_CRSF_FOLDER(2, 0, "Global", {3,4});
-    } else if (idx == 3) {
-        crsf.send_param_response_CRSF_UINT8(3, 2, "Switch Addr",
-            (uint8_t)modul_adress, 0, 20, "");
-    } else if (idx == 4) {
-        crsf.send_param_response_CRSF_UINT8(4, 2, "CRSF Kanal",
-            (uint8_t)CRSF_Channel, 0, 15, "");
-    } else if (idx >= 5 && idx <= 76) {
-        uint8_t x   = (idx - 5) / 9;
-        uint8_t sub = (idx - 5) % 9;
-        uint8_t fi  = 5 + x * 9;
-        uint8_t mH  = (mode[x] >> 8) & 0xFF;
-        uint8_t mL  =  mode[x]        & 0xFF;
-        snprintf(buf, sizeof(buf), "Ausgang %d", x + 1);
+static uint8_t luaGetAddr(uint8_t)              { return (uint8_t)modul_adress; }
+static void    luaSetAddr(uint8_t, uint8_t v)   { modul_adress = v; crsf.setDeviceAddress(crsfAddrFromWM()); nvsSave(); }
+static uint8_t luaGetCrsfCh(uint8_t)            { return (uint8_t)CRSF_Channel; }
+static void    luaSetCrsfCh(uint8_t, uint8_t v) { CRSF_Channel = v; nvsSave(); }
 
-        switch (sub) {
-        case 0: // Folder
-            crsf.send_param_response_CRSF_FOLDER(fi, 0, buf,
-                {(uint8_t)(fi+1),(uint8_t)(fi+2),(uint8_t)(fi+3),
-                 (uint8_t)(fi+4),(uint8_t)(fi+5),(uint8_t)(fi+6),
-                 (uint8_t)(fi+7),(uint8_t)(fi+8)});
-            break;
-        case 1: // Ausgang-Quelle
-            crsf.send_param_response_CRSF_TEXT_SELECTION(fi+1, fi,
-                "Ausgang-Quelle", "Einzelkanal;Kanal_L;Kanal_H",
-                getKanalQuelle(x), 0, 2);
-            break;
-        case 2: // Kanal Nr
-        {
-            uint8_t q = getKanalQuelle(x);
-            uint8_t maxNr = (q == 0) ? 8 : 16;
-            snprintf(buf, sizeof(buf), (q == 0) ? "Bit Nr" : "RC-Kanal Nr");
-            crsf.send_param_response_CRSF_UINT8(fi+2, fi,
-                buf, getKanalNr(x), 1, maxNr, "");
-            break;
-        }
-        case 3: // Blink
-            crsf.send_param_response_CRSF_TEXT_SELECTION(fi+3, fi,
-                "Blink", "Dauerlicht;Blinken",
-                (mH > 0) ? 1 : 0, 0, 1);
-            break;
-        case 4: // Blink AN
-            crsf.send_param_response_CRSF_UINT8(fi+4, fi,
-                "Blink AN *10ms", mH ? mH : 10, 1, 250, "");
-            break;
-        case 5: // Blink AUS
-            crsf.send_param_response_CRSF_UINT8(fi+5, fi,
-                "Blink AUS *10ms", mL ? mL : 10, 1, 250, "");
-            break;
-        case 6: // PWM Modus
-            if (isCrsf) {
-                crsf.send_param_response_CRSF_TEXT_SELECTION(fi+6, fi,
-                    "PWM Modus", "Festwert;MWprop (Kanal=Ausgang)",
-                    getPwmModus(x), 0, 1);
-            } else {
-                crsf.send_param_response_CRSF_INFO(fi+6, fi,
-                    "PWM Modus", "Festwert (SBUS)");
-            }
-            break;
-        case 7: // PWM Festwert
-            if (getPwmModus(x) == 1) {
-                snprintf(buf, sizeof(buf), "MWprop Kanal %d (auto)", x+1);
-                crsf.send_param_response_CRSF_INFO(fi+7, fi, "PWM Wert", buf);
-            } else {
-                crsf.send_param_response_CRSF_UINT8(fi+7, fi,
-                    "PWM Festwert", (uint8_t)pwm_wert[x], 0, 255, "");
-            }
-            break;
-        case 8: // Test
-            crsf.send_param_response_CRSF_TEXT_SELECTION(fi+8, fi,
-                "Test", "Aus;Ein", 0, 0, 1);
-            break;
-        }
-    } else if (idx == 77) {
-        // NEU v2.02, uebernommen aus dem Soundmodul-Projekt (dort Ordner 160)
-        crsf.send_param_response_CRSF_FOLDER(77, 0, "WLAN", {78,79,80});
-    } else if (idx == 78) {
-        // NEU v2.02, uebernommen aus dem Soundmodul-Projekt (dort Feld 175)
-        crsf.send_param_response_CRSF_TEXT_SELECTION(78, 77,
-            "Auto-Failsafe", "Aus;Ein",
-            g_wifi_auto ? 1 : 0, 0, 1);
-    } else if (idx == 79) {
-        // NEU v2.02, uebernommen aus dem Soundmodul-Projekt (dort Feld 176)
-        crsf.send_param_response_CRSF_UINT8(79, 77,
-            "Auto Timeout", (uint8_t)constrain(g_wifi_auto_timeout,5,240), 5, 240, "s");
-    } else if (idx == 80) {
-        // NEU v2.02, uebernommen aus dem Soundmodul-Projekt (dort Feld 181,
-        // "WLAN dauerhaft an") - Default AN, ueberstimmt 78/79 vollstaendig
-        // (siehe wifiFailsafeCheck()/webui_init()).
-        crsf.send_param_response_CRSF_TEXT_SELECTION(80, 77,
-            "Dauerhaft an", "Aus;Ein",
-            g_wifi_always_on ? 1 : 0, 0, 1);
-    }
+static uint8_t luaGetQuelle(uint8_t x)            { return getKanalQuelle(x); }
+static void    luaSetQuelle(uint8_t x, uint8_t v) { setKanalQuelleNr(x, v, getKanalNr(x)); nvsSave(); }  // Nr bleibt
+static uint8_t luaGetNr(uint8_t x)                { return getKanalNr(x); }
+static void    luaSetNr(uint8_t x, uint8_t v)     { setKanalQuelleNr(x, getKanalQuelle(x), v); nvsSave(); }
+static void    luaViewNr(uint8_t x, LuaView& v, char*) {
+    uint8_t q = getKanalQuelle(x);
+    bool rc = (q == 1 || q == 2);   // Kanal_L/Kanal_H: RC-Kanal 1-16, sonst Bit 1-8
+    v.name = rc ? "RC-Kanal Nr" : "Bit Nr";
+    v.max  = rc ? 16 : 8;
 }
 
-static void crsfWriteParam(uint8_t idx, uint8_t val) {
-    const bool isCrsf = (RC_System_boot == 4);
-    if (idx == 3) {
-        modul_adress = val; crsf.setDeviceAddress(crsfAddrFromWM()); nvsSave();
-    } else if (idx == 4) {
-        CRSF_Channel = val; nvsSave();
-    } else if (idx >= 5 && idx <= 76) {
-        uint8_t x   = (idx - 5) / 9;
-        uint8_t sub = (idx - 5) % 9;
-        switch (sub) {
-        case 1: // Ausgang-Quelle: Quelle wechseln, Kanalnummer beibehalten
-            setKanalQuelleNr(x, val, getKanalNr(x));
-            nvsSave(); break;
-        case 2: // Kanal Nr
-            setKanalQuelleNr(x, getKanalQuelle(x), val);
-            nvsSave(); break;
-        case 3: // Blink
-            if (val == 0) {
-                mode[x] = 0;
-            } else {
-                uint8_t mH = (mode[x] >> 8) & 0xFF;
-                uint8_t mL =  mode[x]        & 0xFF;
-                if (!mH) mH = 10;
-                if (!mL) mL = 10;
-                mode[x] = ((uint16_t)mH << 8) | mL;
-            }
-            nvsSave(); break;
-        case 4: // Blink AN
-            mode[x] = ((uint16_t)val << 8) | (mode[x] & 0xFF);
-            nvsSave(); break;
-        case 5: // Blink AUS
-            mode[x] = (mode[x] & 0xFF00) | val;
-            nvsSave(); break;
-        case 6: // PWM Modus
-            if (isCrsf) {
-                if (val == 1) {
-                    pwm_wert[x] = 200 + x; // MWprop
-                    einkanal_Data |= (1 << x); // Ausgang einschalten
-                } else if (getPwmModus(x) == 1) {
-                    pwm_wert[x] = 255; // zurueck auf Festwert
-                }
-                nvsSave();
-            }
-            break;
-        case 7: // PWM Festwert
-            if (getPwmModus(x) == 0) { pwm_wert[x] = val; nvsSave(); }
-            break;
-        case 8: // Test
-            if (val == 1) einkanal_Data |=  (1 << x);
-            else          einkanal_Data &= ~(1 << x);
-            break;
-        }
-    } else if (idx == 78) {
-        // NEU v2.02: rein persistierend, wie beim Soundmodul (dort Feld
-        // 175) - kein sofortiges Ein-/Ausschalten, wirkt erst beim naechsten
-        // Timeout-Ablauf bzw. Bootvorgang.
-        g_wifi_auto = (val != 0); nvsSave();
-    } else if (idx == 79) {
-        // NEU v2.02, analog Soundmodul Feld 176.
-        g_wifi_auto_timeout = constrain((uint16_t)val, (uint16_t)5, (uint16_t)240);
-        nvsSave();
-    } else if (idx == 80) {
-        // NEU v2.02: rein persistierend wie 78/79, KEIN sofortiger Aufruf
-        // von webui_enableAP() (anders als der Sofort-Schalter "WLAN
-        // jetzt" ueber /api/wifi). Wirkt erst ab dem naechsten Bootvorgang -
-        // bewusst so (Lehre aus dem Soundmodul-Projekt seit v7.15): ein
-        // WLAN-Start zur Laufzeit direkt aus dem CRSF-Parameter-Handler
-        // heraus ist unnoetiges Risiko, da der AP durch den Default "an"
-        // beim Booten ohnehin schon laeuft.
-        g_wifi_always_on = (val != 0); nvsSave();
+static uint8_t luaGetBlink(uint8_t x) { return ((mode[x] >> 8) & 0xFF) ? 1 : 0; }
+static void    luaSetBlink(uint8_t x, uint8_t v) {
+    if (v == 0) {
+        mode[x] = 0;
+    } else {
+        uint8_t mH = (mode[x] >> 8) & 0xFF;
+        uint8_t mL =  mode[x]        & 0xFF;
+        if (!mH) mH = 10;
+        if (!mL) mL = 10;
+        mode[x] = ((uint16_t)mH << 8) | mL;
     }
+    nvsSave();
+}
+static uint8_t luaGetBlinkOn(uint8_t x)  { uint8_t mH = (mode[x] >> 8) & 0xFF; return mH ? mH : 10; }
+static void    luaSetBlinkOn(uint8_t x, uint8_t v)  { mode[x] = ((uint16_t)v << 8) | (mode[x] & 0xFF); nvsSave(); }
+static uint8_t luaGetBlinkOff(uint8_t x) { uint8_t mL = mode[x] & 0xFF; return mL ? mL : 10; }
+static void    luaSetBlinkOff(uint8_t x, uint8_t v) { mode[x] = (mode[x] & 0xFF00) | v; nvsSave(); }
+
+static uint8_t luaGetPwmModus(uint8_t x) { return getPwmModus(x); }
+static void    luaSetPwmModus(uint8_t x, uint8_t v) {
+    if (v == 1) {
+        pwm_wert[x] = 200 + x;        // MWprop
+        einkanal_Data |= (1 << x);    // Ausgang einschalten
+    } else if (getPwmModus(x) == 1) {
+        pwm_wert[x] = 255;            // zurueck auf Festwert
+    }
+    nvsSave();
+}
+static void luaViewPwmModus(uint8_t, LuaView& v, char*) {
+    if (RC_System_boot != 4) { v.type = LUA_INFO; v.text = "Festwert (SBUS)"; }   // MWprop nur bei CRSF
+}
+static uint8_t luaGetPwm(uint8_t x)            { return (uint8_t)pwm_wert[x]; }
+static void    luaSetPwm(uint8_t x, uint8_t v) { pwm_wert[x] = v; nvsSave(); }
+static void    luaViewPwm(uint8_t x, LuaView& v, char* buf) {
+    if (getPwmModus(x) != 1) return;
+    snprintf(buf, LUA_VIEW_BUF, "MWprop Kanal %d (auto)", x + 1);
+    v.type = LUA_INFO; v.name = "PWM Wert"; v.text = buf;
+}
+static uint8_t luaGetTest(uint8_t)             { return 0; }
+static void    luaSetTest(uint8_t x, uint8_t v) {
+    if (v) einkanal_Data |=  (1 << x);
+    else   einkanal_Data &= ~(1 << x);
+}
+
+// WLAN 78-80: rein persistierend, wirkt beim naechsten Timeout bzw. Booten
+// (kein WLAN-Start aus dem CRSF-Handler, Lehre aus dem Soundmodul v7.15)
+static uint8_t luaGetWifiAuto(uint8_t)              { return g_wifi_auto ? 1 : 0; }
+static void    luaSetWifiAuto(uint8_t, uint8_t v)   { g_wifi_auto = (v != 0); nvsSave(); }
+static uint8_t luaGetWifiTo(uint8_t)                { return (uint8_t)constrain(g_wifi_auto_timeout, 5, 240); }
+static void    luaSetWifiTo(uint8_t, uint8_t v)     { g_wifi_auto_timeout = v; nvsSave(); }
+static uint8_t luaGetWifiAlways(uint8_t)            { return g_wifi_always_on ? 1 : 0; }
+static void    luaSetWifiAlways(uint8_t, uint8_t v) { g_wifi_always_on = (v != 0); nvsSave(); }
+
+static void buildLuaMenu() {
+    LuaMenu& m = luaMenu;
+    m.clear();
+    m.folder(0, 0, "");
+    m.info(1, 0, "Version", "v2.05 ESP32");
+    m.folder(2, 0, "Global");
+    m.u8(3, 2, "Switch Addr", 0, 20, "", luaGetAddr, luaSetAddr);
+    m.u8(4, 2, "CRSF Kanal", 0, 15, "", luaGetCrsfCh, luaSetCrsfCh);
+    for (uint8_t x = 0; x < 8; x++) {
+        uint8_t fi = 5 + x * 9;
+        snprintf(luaOutName[x], sizeof(luaOutName[x]), "Ausgang %d", x + 1);
+        m.folder(fi, 0, luaOutName[x]);
+        m.select(fi + 1, fi, "Ausgang-Quelle", "Einzelkanal;Kanal_L;Kanal_H",
+                 luaGetQuelle, luaSetQuelle, x);
+        m.u8(fi + 2, fi, "Bit Nr", 1, 8, "", luaGetNr, luaSetNr, x)->view = luaViewNr;
+        m.select(fi + 3, fi, "Blink", "Dauerlicht;Blinken", luaGetBlink, luaSetBlink, x);
+        m.u8(fi + 4, fi, "Blink AN *10ms", 1, 250, "", luaGetBlinkOn, luaSetBlinkOn, x);
+        m.u8(fi + 5, fi, "Blink AUS *10ms", 1, 250, "", luaGetBlinkOff, luaSetBlinkOff, x);
+        m.select(fi + 6, fi, "PWM Modus", "Festwert;MWprop (Kanal=Ausgang)",
+                 luaGetPwmModus, luaSetPwmModus, x)->view = luaViewPwmModus;
+        m.u8(fi + 7, fi, "PWM Festwert", 0, 255, "", luaGetPwm, luaSetPwm, x)->view = luaViewPwm;
+        m.select(fi + 8, fi, "Test", "Aus;Ein", luaGetTest, luaSetTest, x);
+    }
+    m.folder(77, 0, "WLAN");
+    m.select(78, 77, "Auto-Failsafe", "Aus;Ein", luaGetWifiAuto, luaSetWifiAuto);
+    m.u8(79, 77, "Auto Timeout", 5, 240, "s", luaGetWifiTo, luaSetWifiTo);
+    m.select(80, 77, "Dauerhaft an", "Aus;Ein", luaGetWifiAlways, luaSetWifiAlways);
 }
 
 // ======== Webinterface ==========================================
@@ -710,39 +698,12 @@ static void crsfWriteParam(uint8_t idx, uint8_t val) {
 // mitten drin abwuergen, sobald zufaellig kurz ein gueltiges RC-Signal
 // hereinkaeme. g_wifi_auto/g_wifi_auto_timeout siehe weiter oben, webui_
 // isApActive()/webui_enableAP() in webui.h.
+static WifiFailsafe wifiFailsafe;   // RC_Common wifi_failsafe.h (v2.05)
 static void wifiFailsafeCheck() {
-    static unsigned long busLostSinceMs = 0;
-    static bool          busLostSincePending = false;
-
-    // NEU v2.02: WLAN dauerhaft an ueberstimmt den Auto-Failsafe komplett -
-    // der AP laeuft in diesem Fall bereits seit dem Booten (siehe
-    // webui_init() in webui.h), ein Timer hier waere wirkungslos.
-    if (g_wifi_always_on) {
-        busLostSincePending = false;
-        return;
-    }
-
-    if (BUS_OK) {
-        busLostSincePending = false;
-        return;
-    }
-    if (!g_wifi_auto) {
-        busLostSincePending = false;
-        return;
-    }
-    if (webui_isApActive()) {
-        // WLAN laeuft bereits (manuell oder schon vom Failsafe gestartet) -
-        // nichts zu tun (siehe Kommentar oben, "nie automatisch wieder aus").
-        busLostSincePending = false;
-        return;
-    }
-    if (!busLostSincePending) {
-        busLostSincePending = true;
-        busLostSinceMs = millis();
-        return;
-    }
-    unsigned long timeoutMs = (unsigned long)g_wifi_auto_timeout * 1000UL;
-    if (millis() - busLostSinceMs >= timeoutMs) {
+    // "Dauerhaft an": AP laeuft seit dem Booten (webui_init()), der Timer
+    // ist dann wirkungslos. Laeuft der AP schon, ist nichts zu tun.
+    if (wifiFailsafe.check(millis(), g_wifi_always_on, g_wifi_auto, g_wifi_auto_timeout,
+                           BUS_OK, webui_isApActive())) {
         Serial.printf("Auto-WLAN-Failsafe: %u s ohne gueltiges RC-Signal - schalte WLAN ein.\n",
                       (unsigned)g_wifi_auto_timeout);
         webui_enableAP();
@@ -854,8 +815,8 @@ void setup() {
     }
 
     pinMode(WifiPin, INPUT_PULLUP);
-    pinMode(LedPin,  OUTPUT);
-    digitalWrite(LedPin, LOW);
+    statusLed.begin(LedPin, false);   // v2.05: RC_Common status_led.h
+    buildLuaMenu();
 
     webui_init();
 
@@ -906,21 +867,21 @@ void loop() {
             // crsf_esp32.cpp/send_device_info()) - damit erkennen
             // Konfiguratoren wie TBS Agent eine geaenderte Parameter-
             // struktur zuverlaessig und lesen sie neu ein.
-            crsf.send_device_info(devName, CRSF_PARAM_COUNT, (uint8_t)(Version & 0xFF));
+            crsf.send_device_info(devName, luaMenu.maxId(), (uint8_t)(Version & 0xFF));
         }
         // ELRS LUA Script: Parameter lesen
         if (crsf.getDeviceReadReplyPending()) {
             crsf.setDeviceReadReplyPending(false);
-            crsfSendParam(crsf.getParamReadIndex());
+            luaMenu.send(crsf, crsf.getParamReadIndex());
         }
         // ELRS LUA Script: Parameter schreiben + Read-Back (CRSF Standard)
         if (crsf.getDeviceWriteReplyPending()) {
             uint8_t widx = crsf.getParamWriteIndex();
             uint8_t wval = crsf.getParamWriteValue();
             crsf.setDeviceWriteReplyPending(false);
-            crsfWriteParam(widx, wval);
+            luaMenu.write(widx, wval);
             // Read-Back: geschriebenen Parameter direkt zuruecksenden
-            crsfSendParam(widx);
+            luaMenu.send(crsf, widx);
         }
         // WM-Protokoll Befehle
         if (crsf.getDeviceCommandReplyPending()) {
@@ -932,6 +893,7 @@ void loop() {
     } else {
         if (sbus_rx.Read()) {
             sbus_data = sbus_rx.data();
+            lastSbusFrameMs = millis();   // v2.05: SBUS-Zeitlimit und LED
 
             if (sbus_data.failsafe) {
                 BUS_OK = false;
@@ -948,6 +910,7 @@ void loop() {
                 einkanalFunctionSBUS(sbus_data.ch[CRSF_Channel]);
             Data = einkanal_Data;
         }
+        checkSbusTimeout();   // v2.05
     }
 
     Output(Data);
