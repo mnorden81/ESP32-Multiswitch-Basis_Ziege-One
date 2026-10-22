@@ -1,9 +1,22 @@
 /*
-    ESP32-MultiSwitch  v2.05
+    ESP32-MultiSwitch  v2.06
    v2.04: CRSF-Code als gemeinsame Bibliothek, siehe AENDERUNGEN v2.04.
    v2.00 erstellt von: PiperPilot
    Basiert auf: ESP32-SBus-Switch 0.6   (Ziege-One / Der RC-Modellbauer)
    CRSF-Integration: ESP32-RC-Sound 0.43 (Ziege-One / Der RC-Modellbauer)
+
+ ÄNDERUNGEN v2.06 (RC_Common 1.2.0):
+   - NEU: Einstellungs-Backup im Flash des Moduls (Tab WLAN, Karte
+     "Konfiguration sichern"): "Im Modul sichern", Liste der Backups,
+     wiederherstellen und loeschen. Inhalt wie beim Export als Datei.
+     Gehalten werden die letzten 5 von Hand gesicherten Backups.
+   - NEU: Vor jedem Import (Datei oder Flash) und vor jedem
+     Firmware-Update per WLAN sichert die Weboberflaeche den aktuellen
+     Stand automatisch (die letzten 3 bleiben).
+   - Braucht ein Partitionsschema mit SPIFFS-Bereich (Standard
+     "Default 4MB with spiffs"). Das Backup uebersteht Flashen aus der
+     IDE und OTA, nicht aber "Erase All Flash" oder ein anderes
+     Partitionsschema.
 
  ÄNDERUNGEN v2.05 (gemeinsame Basis RC_Common 1.1.0):
    - Gemeinsamer Code aller ESP32-Module liegt jetzt in src/RC_Common/
@@ -141,8 +154,9 @@
 #include "src/RC_Common/status_led.h"
 #include "src/RC_Common/wifi_failsafe.h"
 #include "src/RC_Common/web_common.h"
+#include "src/RC_Common/config_backup.h"   // v2.06
 
-constexpr uint16_t Version = 205; // 2.05 - gemeinsame Basis RC_Common
+constexpr uint16_t Version = 206; // 2.06 - Einstellungs-Backup im Flash (RC_Common 1.2.0)
 
 // ======== SBUS-Schwellen (benannte Konstanten) ==================
 static constexpr uint16_t SBUS_LOW_THRESHOLD  =  800;
