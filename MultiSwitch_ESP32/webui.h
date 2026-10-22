@@ -323,13 +323,27 @@ main{max-width:560px;margin:0 auto;padding:20px 14px 60px}
       <span id="wifi-auto-overridden-hint" style="color:var(--yellow);font-size:12px;display:none;margin-top:4px">&#9888; Wirkungslos, solange "WLAN dauerhaft aktiv" oben eingeschaltet ist - der AP l&auml;uft dann bereits seit dem Booten.</span>
     </div>
     <div class="card">
-      <div class="card-title">Konfiguration sichern/wiederherstellen (NEU v2.00)</div>
+      <div class="card-title">Konfiguration sichern/wiederherstellen</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
         <button class="btn btn-ghost btn-sm" onclick="exportConfig()">&#8681; Als Datei exportieren</button>
         <button class="btn btn-ghost btn-sm" onclick="document.getElementById('cfg-import-file').click()">&#8679; Aus Datei importieren</button>
         <input type="file" id="cfg-import-file" accept="application/json" style="display:none" onchange="importConfigFile(this.files[0])">
       </div>
       <span style="color:var(--sub);font-size:12px;display:block">Sichert alle Ausg&auml;nge und Einstellungen als JSON-Datei im Browser (kein SD-Slot n&ouml;tig). Import ersetzt die aktuelle Konfiguration inkl. WLAN-Zugangsdaten.</span>
+      <div style="border-top:1px solid var(--border);margin:10px 0 8px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <button class="btn btn-ghost btn-sm" onclick="flashBackupSave()">&#128190; Im Modul sichern</button>
+        <button class="btn btn-ghost btn-sm" onclick="flashBackupList()">&#8679; Aus Modul laden</button>
+      </div>
+      <div id="fb-list" style="display:none;margin-bottom:8px">
+        <select id="fb-select" style="width:100%;margin-bottom:6px"></select>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick="flashBackupRestore()">Wiederherstellen</button>
+          <button class="btn btn-ghost btn-sm" onclick="flashBackupDelete()">L&ouml;schen</button>
+        </div>
+      </div>
+      <div id="fb-status" style="font-size:12px;margin-bottom:6px"></div>
+      <span style="color:var(--sub);font-size:12px;display:block">v2.06: Sichert dieselben Daten im Flash des Moduls &ndash; ohne PC oder Handy-Datei. Es bleiben die letzten 5 eigenen Sicherungen und 3 automatische (vor jedem Import und Firmware-Update). &Uuml;bersteht Flashen und OTA, nicht aber &bdquo;Erase All Flash&ldquo; oder ein anderes Partitionsschema &ndash; f&uuml;r den Ernstfall zus&auml;tzlich als Datei exportieren.</span>
     </div>
     <div class="card" id="c-ota">
       <div class="card-title">Firmware-Update (OTA, NEU v2.00)</div>
@@ -717,15 +731,22 @@ function updateWifiAlwaysOnHint(){
 // und bietet das Ergebnis als Datei zum Download an - ganz normaler
 // Browser-Download, da der Webserver direkt auf dem Modul läuft. Kein SD-
 // Slot nötig/vorhanden - bewusst rein Browser-basiert.
-async function exportConfig(){
+// v2.06: Konfiguration einsammeln, gemeinsam fuer Export als Datei und
+// Backup im Flash. null = Geraet nicht erreichbar.
+async function collectConfig(){
   const cfg=await api('/api/config');
   const st=await api('/api/status');
-  if(!cfg||!st){ alert('Export fehlgeschlagen (Gerät nicht erreichbar).'); return; }
-  const data={
+  if(!cfg||!st) return null;
+  return {
     device:'ESP32-MultiSwitch', version:st.version||'', exported:new Date().toISOString(),
     settings:cfg,
     outputs:st.outputs.map((o,i)=>({ch:i,name:o.name,kanal:o.kanal,pwm:o.pwm,mode:o.mode}))
   };
+}
+async function exportConfig(){
+  const data=await collectConfig();
+  if(!data){ alert('Export fehlgeschlagen (Gerät nicht erreichbar).'); return; }
+  const cfg=data.settings;
   const text=JSON.stringify(data,null,2);
   let name='multiswitch-config';
   if(cfg.dnam) name+='-'+String(cfg.dnam).replace(/[^A-Za-z0-9_-]+/g,'_');
@@ -761,6 +782,8 @@ function importConfigFile(file){
   $('cfg-import-file').value='';
 }
 async function importConfigData(data){
+  // v2.06: bisherigen Stand vorher automatisch im Flash sichern
+  await rcBackupSnapshot(collectConfig);
   const s=data.settings||{};
   await api('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
@@ -788,7 +811,38 @@ function uploadOtaFile(file){
   // v2.05: gemeinsamer Upload aus /rc_common.js
   rcOtaUpload(file,$('ota-status'),$('ota-file'),function(ok,err){
     if(!ok) alert('Update fehlgeschlagen ('+rcErrText(err)+').');
-  });
+  },()=>rcBackupSnapshot(collectConfig));   // v2.06: vorher Backup im Flash
+}
+
+// ─── Backup im Flash des Moduls (v2.06, RC_Common config_backup) ───────
+function fbStatus(t,err){ const e=$('fb-status'); e.textContent=t; e.style.color=err?'var(--red)':'var(--green)'; }
+async function flashBackupSave(){
+  const data=await collectConfig();
+  if(!data){ fbStatus('Gerät nicht erreichbar',1); return; }
+  const r=await rcBackupSave(data,false);
+  if(r.ok){ fbStatus('Im Modul gesichert'); if($('fb-list').style.display!=='none') flashBackupList(); }
+  else fbStatus('Sichern fehlgeschlagen: '+rcErrText(r.error),1);
+}
+async function flashBackupList(){
+  const r=await rcBackupList();
+  if(!r.ok){ fbStatus('Fehler: '+rcErrText(r.error),1); return; }
+  const n=rcBackupFill($('fb-select'),r.files);
+  $('fb-list').style.display=n?'':'none';
+  fbStatus(n?n+' Backup(s) im Modul':'Keine Backups im Modul',!n);
+}
+async function flashBackupRestore(){
+  const name=$('fb-select').value;
+  if(!name) return;
+  const data=await rcBackupGet(name);
+  if(!data||!data.settings||!Array.isArray(data.outputs)){ fbStatus('Backup ist keine gültige MultiSwitch-Konfiguration',1); return; }
+  if(!confirm('Aktuelle Konfiguration (inkl. WLAN-Zugangsdaten) durch dieses Backup ersetzen?\n'+$('fb-select').selectedOptions[0].textContent)) return;
+  importConfigData(data);
+}
+async function flashBackupDelete(){
+  const name=$('fb-select').value;
+  if(!name||!confirm('Backup im Modul löschen?\n'+$('fb-select').selectedOptions[0].textContent)) return;
+  const r=await rcBackupDelete(name);
+  if(r.ok) flashBackupList(); else fbStatus('Löschen fehlgeschlagen: '+rcErrText(r.error),1);
 }
 
 function startPoll(){pollTimer=setInterval(pollDebug,800);}
@@ -1211,6 +1265,8 @@ void webui_init() {
     webServer.on("/api/wifi",    HTTP_POST, handleWifi);
     // v2.05: /api/otaupdate, /rc_common.js, /api/uartroles aus RC_Common
     webCommonRegister(webServer, storageSave);
+    // v2.06: Einstellungs-Backups im Flash (/api/backup/*, RC_Common)
+    cfgBackupRegister(webServer);
     // WebServer.begin() bewusst unabhaengig vom AP-Status: der Server lauscht
     // so schon, sobald der AP spaeter per Auto-Failsafe/manuell aktiviert wird
     // (kein erneutes .begin() noetig).
