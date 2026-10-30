@@ -2,6 +2,8 @@
 
 Variante von v3.13 (`MultiSwitch_ESP32_V3/`) für die Platine **Multiswitch_TXRX** (ESP32 + ULN2803A). Einziger Unterschied zu V3: die Ausgangs-Pinbelegung (siehe Pin-Belegung unten). Alle Funktionen von V3 sind unverändert enthalten. **Nicht** auf der alten Platine (Ausgänge GPIO 18–27) verwenden – dafür `MultiSwitch_ESP32_V3/` nehmen.
 
+> **Hinweis Treiber:** Der ULN2803A ist abgekündigt. Als Nachfolger passt der **TBD62083APG** (Toshiba, DMOS) direkt in denselben DIP-18-Sockel: gleiche Pinbelegung (Pin 9 GND, Pin 10 COM), Freilaufdioden ebenfalls intern, Ansteuerung mit 3,3 V möglich. Er verliert am Ausgang nur ca. 0,2–0,4 V statt ca. 1 V und wird dadurch deutlich weniger warm. An der Firmware ändert sich nichts. Vor dem Kauf das Datenblatt prüfen.
+
 ## Änderungen v3.14 (gemeinsame Basis RC_Common)
 
 - **Gemeinsame Basis RC_Common 1.0.0** unter `src/RC_Common/` (identisch in allen ESP32-Projekten, siehe `src/RC_Common/README.md`): CRSF-Bibliothek 1.1.0, Lua-Menü als Tabelle, gemeinsame NVS-Schlüssel, WLAN-Failsafe, Status-LED, OTA-Upload. Der Ordner `src/CRSF_ESP32/` entfällt.
