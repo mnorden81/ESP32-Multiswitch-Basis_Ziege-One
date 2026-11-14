@@ -4,6 +4,10 @@ RC-gesteuerter 8-Kanal-Schalter für ESP32 mit Web-Interface.
 
 *v2.00 erstellt von: PiperPilot*
 
+## Änderungen v2.07
+
+- Lua: „PWM Festwert“ bleibt bei PWM Modus „MWprop“ ein Zahlenfeld (gesperrt) statt Info-Feld. Vorher ließ sich der Festwert nach dem Zurückstellen auf „Festwert“ erst nach Verlassen des Menüs einstellen (das ELRS-Lua-Skript lädt nur Zahlen- und Auswahlfelder neu).
+
 ## Änderungen v2.05 (gemeinsame Basis RC_Common)
 
 - **Gemeinsame Basis RC_Common 1.0.0** unter `src/RC_Common/` (identisch in allen ESP32-Projekten, siehe `src/RC_Common/README.md`): CRSF-Bibliothek 1.1.0, Lua-Menü als Tabelle, gemeinsame NVS-Schlüssel, WLAN-Failsafe, Status-LED, OTA-Upload. Der Ordner `src/CRSF_ESP32/` entfällt.
