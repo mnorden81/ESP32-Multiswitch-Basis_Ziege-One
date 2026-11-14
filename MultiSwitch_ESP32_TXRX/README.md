@@ -4,6 +4,11 @@ Variante von v3.13 (`MultiSwitch_ESP32_V3/`) für die Platine **Multiswitch_TXRX
 
 > **Hinweis Treiber:** Der ULN2803A ist abgekündigt. Als Nachfolger passt der **TBD62083APG** (Toshiba, DMOS) direkt in denselben DIP-18-Sockel: gleiche Pinbelegung (Pin 9 GND, Pin 10 COM), Freilaufdioden ebenfalls intern, Ansteuerung mit 3,3 V möglich. Er verliert am Ausgang nur ca. 0,2–0,4 V statt ca. 1 V und wird dadurch deutlich weniger warm. An der Firmware ändert sich nichts. Vor dem Kauf das Datenblatt prüfen.
 
+## Änderungen v3.17
+
+- Lua-Menü übersichtlicher (RC_Common 1.3.0, wie RC-Multiswitch-Sound v1.05): lange Auswahlfelder kommen vollständig an (Chunk-Fix), Ordner zeigen ihren Wert (z. B. „Ausgang 1 (Kanal_L 5)“, „Global (Adr 0)“), Felder ohne Wirkung werden ausgeblendet (SBUS-Einkanal „SBUS EK Kanal“, früher „CRSF Kanal“, Blinkzeiten bei Dauerlicht, PWM Festwert bei MWprop). Feldnummern bleiben gleich.
+- Lua-Feld „Version“ zeigt die aktuelle Version.
+
 ## Änderungen v3.16
 
 - Lua: „PWM Festwert“ bleibt bei PWM Modus „MWprop“ ein Zahlenfeld (gesperrt) statt Info-Feld. Vorher ließ sich der Festwert nach dem Zurückstellen auf „Festwert“ erst nach Verlassen des Menüs einstellen (das ELRS-Lua-Skript lädt nur Zahlen- und Auswahlfelder neu).
