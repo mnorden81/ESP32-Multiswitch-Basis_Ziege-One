@@ -218,7 +218,7 @@
 #include "src/RC_Common/web_common.h"
 #include "src/RC_Common/config_backup.h"   // v3.15
 
-constexpr uint16_t Version = 315; // 3.15 - Einstellungs-Backup im Flash (RC_Common 1.2.0)
+constexpr uint16_t Version = 316; // 3.16 - Lua: "PWM Festwert" bleibt bei PWM Modus MWprop ein Zahlenfeld (gesperrt) statt Info-Feld - sonst erst nach Menue-Verlassen einstellbar.
 
 // ======== SBUS-Schwellen (benannte Konstanten) ==================
 static constexpr uint16_t SBUS_LOW_THRESHOLD  =  800;
@@ -843,10 +843,13 @@ static void luaViewPwmModus(uint8_t, LuaView& v, char*) {
 }
 static uint8_t luaGetPwm(uint8_t x)            { return (uint8_t)pwm_wert[x]; }
 static void    luaSetPwm(uint8_t x, uint8_t v) { pwm_wert[x] = v; nvsSave(); }
-static void    luaViewPwm(uint8_t x, LuaView& v, char* buf) {
+// Bei MWprop bleibt "PWM Festwert" ein Zahlenfeld, nur gesperrt (min = max).
+// Als Info-Feld wuerde es das ELRS-Lua-Skript nach dem Zurueckstellen auf
+// "Festwert" nicht neu laden (es laedt nur Zahlen-/Auswahlfelder nach) - der
+// Festwert liess sich dann erst nach Verlassen des Menues einstellen.
+static void    luaViewPwm(uint8_t x, LuaView& v, char*) {
     if (getPwmModus(x) != 1) return;
-    snprintf(buf, LUA_VIEW_BUF, "MWprop Kanal %d (auto)", x + 1);
-    v.type = LUA_INFO; v.name = "PWM Wert"; v.text = buf;
+    v.min = v.max = v.value;
 }
 static uint8_t luaGetTest(uint8_t)             { return 0; }
 static void    luaSetTest(uint8_t x, uint8_t v) {
