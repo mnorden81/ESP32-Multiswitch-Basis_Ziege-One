@@ -1,5 +1,5 @@
 /*
-    ESP32-MultiSwitch  v3.15
+    ESP32-MultiSwitch  v3.17
    v3.00 erstellt von: PiperPilot - eigenstaendiges, unabhaengig baubares
    Projekt, abgezweigt von ESP32-MultiSwitch v2.02 (siehe ESP32_Multiswitch_2/
    ESP32-Multiswitch-CRSF-bidirektional/). v2.xx bleibt unveraendert bestehen.
@@ -37,6 +37,17 @@
    2 = ELRS normiert  (SBUS)
    3 = HoTT           (SBUS)
    4 = CRSF           (ExpressLRS / TBS CrossFire, bidirektional)
+
+ ÄNDERUNGEN v3.17 (RC_Common 1.3.0, Lua wie RC-Multiswitch-Sound v1.05):
+   - FIX: Lange Lua-Auswahlfelder (z. B. Ausgang-Quelle mit MKan) kommen
+     Chunk fuer Chunk wie vom Sender angefragt. Vorher zeigte das ELRS-Lua
+     ihren Wert nicht oder unvollstaendig.
+   - Ordnernamen zeigen den aktuellen Wert: "Ausgang 1 (Kanal_L 5)",
+     "Global (Adr 0)".
+   - Felder ohne Wirkung werden ausgeblendet (Feld-IDs bleiben): Global
+     "SBUS EK Kanal" (vorher "CRSF Kanal", wirkt nur bei SBUS), Blinkzeiten
+     bei Dauerlicht, PWM Festwert bei MWprop.
+   - FIX: Lua-Feld "Version" zeigte eine alte Version, jetzt aus Version.
 
  ÄNDERUNGEN v3.15 (RC_Common 1.2.0):
    - NEU: Einstellungs-Backup im Flash des Moduls (Tab WLAN, Karte
@@ -216,7 +227,8 @@
 #include "src/RC_Common/web_common.h"
 #include "src/RC_Common/config_backup.h"   // v3.15
 
-constexpr uint16_t Version = 316; // 3.16 - Lua: "PWM Festwert" bleibt bei PWM Modus MWprop ein Zahlenfeld (gesperrt) statt Info-Feld - sonst erst nach Menue-Verlassen einstellbar.
+constexpr uint16_t Version = 317; // 3.17 - Lua: Chunk-Fix (RC_Common 1.3.0), Werte in Ordnernamen, unpassende Felder ausgeblendet.
+// 3.16 - Lua: "PWM Festwert" bleibt bei PWM Modus MWprop ein Zahlenfeld (gesperrt) statt Info-Feld - sonst erst nach Menue-Verlassen einstellbar.
 
 // ======== SBUS-Schwellen (benannte Konstanten) ==================
 static constexpr uint16_t SBUS_LOW_THRESHOLD  =  800;
@@ -797,6 +809,19 @@ static void    luaSetAddr(uint8_t, uint8_t v)   { modul_adress = v; crsf.setDevi
 static uint8_t luaGetCrsfCh(uint8_t)            { return (uint8_t)CRSF_Channel; }
 static void    luaSetCrsfCh(uint8_t, uint8_t v) { CRSF_Channel = v; nvsSave(); }
 
+// Lua-Menue uebersichtlicher (RC_Common 1.3.0, wie RC-Multiswitch-Sound v1.05):
+// Felder ohne Wirkung werden ausgeblendet (CRSF hidden, Feld-IDs bleiben),
+// Ordnernamen zeigen den aktuellen Wert. Das Lua gibt es nur bei CRSF, Feld 4
+// ist trotz des alten Namens "CRSF Kanal" der SBUS-Kanal fuer den Einkanal-
+// Empfang und hat dort keine Wirkung.
+static void luaHideSbusOnly(uint8_t, LuaView& v, char*) {
+    if (RC_System_boot == 4) v.hidden = true;
+}
+static void luaShowGlobalFolder(uint8_t, LuaView& v, char* buf) {
+    snprintf(buf, LUA_VIEW_BUF, "Global (Adr %d)", (int)modul_adress);
+    v.name = buf;
+}
+
 static uint8_t luaGetQuelle(uint8_t x)            { return getKanalQuelle(x); }
 static void    luaSetQuelle(uint8_t x, uint8_t v) { setKanalQuelleNr(x, v, getKanalNr(x)); nvsSave(); }  // Nr bleibt
 static uint8_t luaGetNr(uint8_t x)                { return getKanalNr(x); }
@@ -820,6 +845,17 @@ static void    luaSetBlink(uint8_t x, uint8_t v) {
         mode[x] = ((uint16_t)mH << 8) | mL;
     }
     nvsSave();
+}
+// Quelle im Ordnernamen, z. B. "Ausgang 1 (Kanal_L 5)"
+static void luaShowOutFolder(uint8_t x, LuaView& v, char* buf) {
+    static const char* const Q[] = {"Bit", "Kanal_L", "Kanal_H", "MKan1 Bit", "MKan2 Bit"};
+    uint8_t q = getKanalQuelle(x);
+    snprintf(buf, LUA_VIEW_BUF, "%s (%s %d)", luaOutName[x], Q[q < 5 ? q : 0], (int)getKanalNr(x));
+    v.name = buf;
+}
+// Blinkzeiten nur bei "Blinken" sichtbar
+static void luaViewBlinkTime(uint8_t x, LuaView& v, char*) {
+    if (!((mode[x] >> 8) & 0xFF)) v.hidden = true;
 }
 static uint8_t luaGetBlinkOn(uint8_t x)  { uint8_t mH = (mode[x] >> 8) & 0xFF; return mH ? mH : 10; }
 static void    luaSetBlinkOn(uint8_t x, uint8_t v)  { mode[x] = ((uint16_t)v << 8) | (mode[x] & 0xFF); nvsSave(); }
@@ -848,6 +884,7 @@ static void    luaSetPwm(uint8_t x, uint8_t v) { pwm_wert[x] = v; nvsSave(); }
 static void    luaViewPwm(uint8_t x, LuaView& v, char*) {
     if (getPwmModus(x) != 1) return;
     v.min = v.max = v.value;
+    v.hidden = true;   // bei MWprop ausgeblendet (Typ bleibt Zahl)
 }
 static uint8_t luaGetTest(uint8_t)             { return 0; }
 static void    luaSetTest(uint8_t x, uint8_t v) {
@@ -868,20 +905,23 @@ static void buildLuaMenu() {
     LuaMenu& m = luaMenu;
     m.clear();
     m.folder(0, 0, "");
-    m.info(1, 0, "Version", "v3.14 ESP32");
-    m.folder(2, 0, "Global");
+    static char luaVersionText[24];
+    snprintf(luaVersionText, sizeof(luaVersionText), "v%d.%02d ESP32", Version / 100, Version % 100);
+    m.info(1, 0, "Version", luaVersionText);
+    m.folder(2, 0, "Global")->view = luaShowGlobalFolder;
     m.u8(3, 2, "Switch Addr", 0, 20, "", luaGetAddr, luaSetAddr);
-    m.u8(4, 2, "CRSF Kanal", 0, 15, "", luaGetCrsfCh, luaSetCrsfCh);
+    m.u8(4, 2, "SBUS EK Kanal", 0, 15, "", luaGetCrsfCh, luaSetCrsfCh)->view = luaHideSbusOnly;
     for (uint8_t x = 0; x < 8; x++) {
         uint8_t fi = 5 + x * 9;
         snprintf(luaOutName[x], sizeof(luaOutName[x]), "Ausgang %d", x + 1);
-        m.folder(fi, 0, luaOutName[x]);
+        LuaItem* fo = m.folder(fi, 0, luaOutName[x]);
+        fo->arg = x; fo->view = luaShowOutFolder;
         m.select(fi + 1, fi, "Ausgang-Quelle", "Einzelkanal;Kanal_L;Kanal_H;MKan1;MKan2",
                  luaGetQuelle, luaSetQuelle, x);
         m.u8(fi + 2, fi, "Bit Nr", 1, 8, "", luaGetNr, luaSetNr, x)->view = luaViewNr;
         m.select(fi + 3, fi, "Blink", "Dauerlicht;Blinken", luaGetBlink, luaSetBlink, x);
-        m.u8(fi + 4, fi, "Blink AN *10ms", 1, 250, "", luaGetBlinkOn, luaSetBlinkOn, x);
-        m.u8(fi + 5, fi, "Blink AUS *10ms", 1, 250, "", luaGetBlinkOff, luaSetBlinkOff, x);
+        m.u8(fi + 4, fi, "Blink AN *10ms", 1, 250, "", luaGetBlinkOn, luaSetBlinkOn, x)->view = luaViewBlinkTime;
+        m.u8(fi + 5, fi, "Blink AUS *10ms", 1, 250, "", luaGetBlinkOff, luaSetBlinkOff, x)->view = luaViewBlinkTime;
         m.select(fi + 6, fi, "PWM Modus", "Festwert;MWprop (Kanal=Ausgang)",
                  luaGetPwmModus, luaSetPwmModus, x)->view = luaViewPwmModus;
         m.u8(fi + 7, fi, "PWM Festwert", 0, 255, "", luaGetPwm, luaSetPwm, x)->view = luaViewPwm;

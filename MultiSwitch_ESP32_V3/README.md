@@ -9,6 +9,11 @@ RC-gesteuerter 8-Kanal-Schalter für ESP32 mit Web-Interface.
 v2.xx bleibt dort unverändert bestehen und wird von dieser Version nicht
 berührt – beide Projekte sind unabhängig voneinander baubar.
 
+## Änderungen v3.17
+
+- Lua-Menü übersichtlicher (RC_Common 1.3.0, wie RC-Multiswitch-Sound v1.05): lange Auswahlfelder kommen vollständig an (Chunk-Fix), Ordner zeigen ihren Wert (z. B. „Ausgang 1 (Kanal_L 5)“, „Global (Adr 0)“), Felder ohne Wirkung werden ausgeblendet (SBUS-Einkanal „SBUS EK Kanal“, früher „CRSF Kanal“, Blinkzeiten bei Dauerlicht, PWM Festwert bei MWprop). Feldnummern bleiben gleich.
+- Lua-Feld „Version“ zeigt die aktuelle Version.
+
 ## Änderungen v3.16
 
 - Lua: „PWM Festwert“ bleibt bei PWM Modus „MWprop“ ein Zahlenfeld (gesperrt) statt Info-Feld. Vorher ließ sich der Festwert nach dem Zurückstellen auf „Festwert“ erst nach Verlassen des Menüs einstellen (das ELRS-Lua-Skript lädt nur Zahlen- und Auswahlfelder neu).
