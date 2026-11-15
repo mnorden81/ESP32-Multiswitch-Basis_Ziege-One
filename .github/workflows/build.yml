@@ -55,3 +55,9 @@ jobs:
         with:
           name: ${{ matrix.sketch }}
           path: build/*.bin
+
+      # Gegenprobe mit dem neueren Core (Arduino IDE nutzt 3.3.12), nur Kompiliertest
+      - name: Compile with esp32 core 3.3.12
+        run: |
+          arduino-cli core install esp32:esp32@3.3.12
+          arduino-cli compile --fqbn esp32:esp32:esp32 --warnings default ${{ matrix.sketch }}
