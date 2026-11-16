@@ -1,61 +1,8 @@
 /*
     ESP32-MultiSwitch  v2.08
-   v2.04: CRSF-Code als gemeinsame Bibliothek, siehe AENDERUNGEN v2.04.
    v2.00 erstellt von: PiperPilot
    Basiert auf: ESP32-SBus-Switch 0.6   (Ziege-One / Der RC-Modellbauer)
    CRSF-Integration: ESP32-RC-Sound 0.43 (Ziege-One / Der RC-Modellbauer)
-
- ÄNDERUNGEN v2.08 (RC_Common 1.3.0, Lua wie RC-Multiswitch-Sound v1.05):
-   - FIX: Lange Lua-Auswahlfelder (z. B. Ausgang-Quelle mit MKan) kommen
-     Chunk fuer Chunk wie vom Sender angefragt. Vorher zeigte das ELRS-Lua
-     ihren Wert nicht oder unvollstaendig.
-   - Ordnernamen zeigen den aktuellen Wert: "Ausgang 1 (Kanal_L 5)",
-     "Global (Adr 0)".
-   - Felder ohne Wirkung werden ausgeblendet (Feld-IDs bleiben): Global
-     "SBUS EK Kanal" (vorher "CRSF Kanal", wirkt nur bei SBUS), Blinkzeiten
-     bei Dauerlicht, PWM Festwert bei MWprop.
-   - FIX: Lua-Feld "Version" zeigte eine alte Version, jetzt aus Version.
-
- ÄNDERUNGEN v2.06 (RC_Common 1.2.0):
-   - NEU: Einstellungs-Backup im Flash des Moduls (Tab WLAN, Karte
-     "Konfiguration sichern"): "Im Modul sichern", Liste der Backups,
-     wiederherstellen und loeschen. Inhalt wie beim Export als Datei.
-     Gehalten werden die letzten 5 von Hand gesicherten Backups.
-   - NEU: Vor jedem Import (Datei oder Flash) und vor jedem
-     Firmware-Update per WLAN sichert die Weboberflaeche den aktuellen
-     Stand automatisch (die letzten 3 bleiben).
-   - Braucht ein Partitionsschema mit SPIFFS-Bereich (Standard
-     "Default 4MB with spiffs"). Das Backup uebersteht Flashen aus der
-     IDE und OTA, nicht aber "Erase All Flash" oder ein anderes
-     Partitionsschema.
-
- ÄNDERUNGEN v2.05 (gemeinsame Basis RC_Common 1.1.0):
-   - Gemeinsamer Code aller ESP32-Module liegt jetzt in src/RC_Common/
-     (identische Kopie in jedem Projekt, siehe src/RC_Common/README.md):
-     CRSF-Bibliothek 1.1.0, Lua-Menue als Tabelle, NVS-Schluessel,
-     WLAN-Failsafe, Status-LED, OTA-Upload, JSON-Helfer. Der Ordner
-     src/CRSF_ESP32/ entfaellt.
-   - FIX: SBUS-Zeitlimit (wie RC-Multiswitch v4.03). Kommen 10 s lang gar
-     keine SBUS-Frames (Stecker ab, Empfaenger ohne Strom), gilt das
-     Signal als weg: BUS_OK wird false, die Ausgaenge gehen aus und das
-     WLAN-Auto-Failsafe kann greifen. Vorher blieb ohne Frames der letzte
-     Zustand stehen. Siehe checkSbusTimeout().
-   - Status-LED (GPIO 2) mit den gemeinsamen Mustern: aus = kein Signal,
-     langsam 500/500 ms = OK, schnell 100/100 ms = Frames ohne RC-Link bzw.
-     SBUS-Failsafe.
-   - Lua-Menue als Tabelle (buildLuaMenu()), gleiche Feld-IDs 0-80.
-   - NVS: gemeinsame Schluessel wip, madr, wfauto, wftmo, wfalways
-     (RC_Common settings_common.h). Beim ersten Start werden die alten
-     Werte (ip, mod_adr, wauto, watout, walways) einmalig uebernommen; die
-     alten Schluessel bleiben fuer ein Zurueckspielen stehen.
-
- ÄNDERUNGEN v2.04 (gemeinsame CRSF-Bibliothek):
-   - CRSF-Code als gemeinsame Bibliothek src/CRSF_ESP32/ (CRSF_ESP32
-     v1.0.0, identisch mit Soundmodul und den anderen Varianten).
-   - Fix: Empfangs-Parser verliert keine Frames mehr, die ueber zwei
-     loop()-Durchlaeufe verteilt ankommen (vorher verloren und als
-     CRC-Fehler gezaehlt). Link-Statistik, Command-CRC und FOLDER-Laenge
-     laut CRSF-Spezifikation korrigiert.
 
  /////Projektbeschreibung////
  RC-gesteuerter 8-Kanal-Schalter/PWM-Ausgabemodul für ESP32. Empfängt
@@ -88,67 +35,13 @@
    3 = HoTT           (SBUS)
    4 = CRSF           (ExpressLRS / TBS CrossFire, bidirektional)
 
- ÄNDERUNGEN v2.00 (übertragen aus dem Soundmodul-Projekt, ESP32-RC-Sound v7):
-   - CRSF-Diagnose-Zähler (rohe Bytes, gültige Frames, CRC-Fehler, PING/
-     PARAM-READ/WRITE) in crsf_esp32.h/.cpp, sichtbar im Debug-Tab der
-     Weboberfläche - macht "geht nicht" ohne Seriell-Monitor sichtbar.
-   - BUS_OK bei CRSF jetzt an den Zähler für gültige Frames gekoppelt statt
-     an "channel_output[0] > 0" (ein Kanalwert von 0 ist legitim und kein
-     zuverlässiger Nachweis für einen frischen Frame).
-   - CRC-Fehler werden gezählt statt bei jedem einzelnen Fehler sofort per
-     Serial.println() ausgegeben - verhindert, dass anhaltendes Funkrauschen
-     den Loop ausbremst; Sammel-Meldung höchstens alle 2s.
-   - updateDevice_Info() gegen zu kurze/kaputte DEVICE_INFO-Frames
-     abgesichert (signed-Rechnung + Mindestlängen-Check).
-   - CRSF_FRAMETYPE_COMMAND prüft jetzt die Zieladresse wie PING/PARAMETER_
-     READ/WRITE (mit Broadcast-Ausnahme fürs WM-Protokoll).
-   - Konfiguration exportieren/importieren als JSON-Datei über den Browser
-     (kein SD-Karten-Slot vorhanden - rein Web/WLAN-basiert), siehe webui.h.
-   - WLAN-Steuerung: optionales Auto-Failsafe schaltet den Access Point
-     automatisch ein, wenn längere Zeit kein gültiges RC-Signal anliegt
-     (z.B. Sender aus/außer Reichweite) - Default AN seit v2.01, siehe
-     wifiFailsafeCheck() unten. Ergänzend manueller "WLAN jetzt ein/aus"-
-     Schalter (Web-UI), der ohne Neustart sofort wirkt, siehe webui.h.
-   - Firmware-Update per WLAN (OTA): eine mit der Arduino-IDE gebaute
-     .bin-Datei wird direkt im Browser hochgeladen und landet im gerade
-     inaktiven OTA-Flash-Segment - Ausbauen/USB-Flashen ist für spätere
-     Updates damit nicht mehr nötig. Schlägt der Upload fehl oder wird er
-     abgebrochen, bootet das Modul unverändert mit der bisherigen
-     Firmware weiter (kein Bricking-Risiko), siehe
-     handleOtaUpdateData()/handleOtaUpdate() in webui.h. Voraussetzung:
-     einmalig ein OTA-fähiges Partitionsschema per USB flashen, siehe
-     README. WICHTIG (Erfahrung aus dem Soundmodul-Projekt übernommen):
-     Update möglichst bei über ESC/Akku bestromtem Modul durchführen,
-     nicht nur über USB - manche USB-Anschlüsse liefern beim
-     Flash-Schreiben nicht genug Strom, ein dadurch ausgelöster Reset
-     bricht den Upload mittendrin ab.
-   - eeprom_esp32.h/hal_esp32.h/output_ctrl.h sind weiterhin NICHT
-     eingebunden (totes Code-Fragment eines nicht gemergten Refactorings,
-     jetzt oben in den Dateien selbst als solches gekennzeichnet).
-   - Fix (nach erstem Test): webui_init() rief webServer.begin() bisher
-     unabhängig vom AP-Status auf, ohne den WiFi-Treiber vorher zu
-     initialisieren. War der AP beim Booten nicht aktiv, fehlten dessen
-     interne FreeRTOS-Queues und es kam zum sofortigen Absturz
-     (assert failed: xQueueSemaphoreTake) mit Bootloop. Behoben durch
-     WiFi.mode(WIFI_AP) am Anfang von webui_init() (siehe webui.h).
-
- ÄNDERUNGEN v0.14 (Verbesserungen):
-   - MWprop-Unterstützung aus ESP32-RC-Sound übernommen:
-     Lautstärke/PWM-Steuerung einzelner Ausgänge über CRSF-Kanal möglich.
-   - wm_prop_value[8] Speicher für MWprop-Kanalwerte (duty 0–255).
-   - nvsSave() jetzt nur noch bei tatsächlicher Änderung (nvsDirty-Flag
-     war schon vorhanden, wird nun auch in webui korrekt gesetzt).
-   - CRSF-Einkanal-Timeout erhöht auf 2000 ms (war 1000 ms) –
-     robuster bei kurzen Signalunterbrechungen.
-   - Output(): pwm_wert >= 300 Mapping auf benannte Konstante ausgelagert.
-   - Konsistente Verwendung von static constexpr überall.
-   - README.md aktualisiert.
+ Versionsgeschichte: siehe CHANGELOG.md im Hauptordner des Repos.
 */
 
 // ======== Bibliotheken ==========================================
 /*
   Bolder Flight Systems SBUS  8.1.4   (für RC_System 0-3)
-  RC_Common 1.0.0 im Sketch-Ordner src/RC_Common/ (v2.05), enthaelt
+  RC_Common 1.4.0 im Sketch-Ordner src/RC_Common/, enthaelt
     CRSF_ESP32 1.1.0, Basis https://github.com/Ziege-One/CRSF_ESP32
 */
 
@@ -168,7 +61,6 @@
 #include "src/RC_Common/config_backup.h"   // v2.06
 
 constexpr uint16_t Version = 208; // 2.08 - Lua: Chunk-Fix (RC_Common 1.3.0), Werte in Ordnernamen, unpassende Felder ausgeblendet.
-// 2.07 - Lua: "PWM Festwert" bleibt bei PWM Modus MWprop ein Zahlenfeld (gesperrt) statt Info-Feld - sonst erst nach Menue-Verlassen einstellbar.
 
 // ======== SBUS-Schwellen (benannte Konstanten) ==================
 static constexpr uint16_t SBUS_LOW_THRESHOLD  =  800;

@@ -1,13 +1,9 @@
 /*
- * webui.h  –  WiFi-Weboberfläche für ESP32-MultiSwitch TXRX  v3.15
- * NEU V3.00: MKan-Gruppen (2 zusaetzliche, unabhaengige Kanalquellen) -
- * siehe Kommentar bei MULTISW_NUM_GROUPS in MultiSwitch_ESP32_TXRX.ino.
- * NEU V3.10: bis zu 3 Konfigurationen (Kanal-Quelle + Blink/PWM) pro
- * Ausgang, Prioritaet Konfig1 > Konfig2 > Konfig3 - siehe evalSlotActive()/
- * Output() in MultiSwitch_ESP32_TXRX.ino. Konfig 2/3 sind bewusst NUR hier in
- * der Web-UI verfuegbar, nicht im CRSF-LUA-Menue (siehe README).
- * v3.14: OTA-Upload, JSON-Helfer und /rc_common.js aus RC_Common
- * (src/RC_Common/web_common.h).
+ * webui.h  –  WiFi-Weboberfläche für ESP32-MultiSwitch TXRX
+ * MKan-Gruppen und Konfig 2/3 je Ausgang (siehe evalSlotActive()/Output()
+ * in MultiSwitch_ESP32_TXRX.ino) sind nur hier in der Web-UI einstellbar,
+ * nicht im Lua-Menü. OTA-Upload, JSON-Helfer und /rc_common.js kommen aus
+ * RC_Common. Versionsgeschichte: siehe CHANGELOG.md.
  */
 
 #pragma once

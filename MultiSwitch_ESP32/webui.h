@@ -1,7 +1,7 @@
 /*
- * webui.h  –  WiFi-Weboberfläche für ESP32-MultiSwitch  v2.00
- * v2.05: OTA-Upload, JSON-Helfer und /rc_common.js aus RC_Common
- * (src/RC_Common/web_common.h).
+ * webui.h  –  WiFi-Weboberfläche für ESP32-MultiSwitch V2
+ * OTA-Upload, JSON-Helfer und /rc_common.js kommen aus RC_Common
+ * (src/RC_Common/web_common.h). Versionsgeschichte: siehe CHANGELOG.md.
  */
 
 #pragma once

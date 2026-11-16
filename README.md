@@ -17,7 +17,7 @@ Dieses Repository enthält drei eigenständige, unabhängig voneinander baubare 
 | [`MultiSwitch_ESP32_V3/`](MultiSwitch_ESP32_V3/) | v3.17 | Eigenständiger Zweig, abgezweigt von v2.02: MKan-Mehrfachadress-Erweiterung und Mehrfachkonfiguration pro Ausgang. |
 | [`MultiSwitch_ESP32_TXRX/`](MultiSwitch_ESP32_TXRX/) | v3.17 | Gleicher Firmwarestand wie V3, aber mit der Pinbelegung der Platine **Multiswitch_TXRX** (ULN2803A; Nachfolger TBD62083APG passt direkt, siehe Ordner-README). |
 
-Details, Änderungshistorie, Pin-Belegung und API stehen in der jeweiligen `README.md` im Projektordner.
+Pin-Belegung und API stehen in der jeweiligen `README.md` im Projektordner, alle Versionen in [CHANGELOG.md](CHANGELOG.md).
 
 Der gemeinsame Code (CRSF-Bibliothek, Lua-Menü, NVS, WLAN-Failsafe, Status-LED, OTA) liegt in jedem Sketch-Ordner als identische Kopie von **RC_Common** unter `src/RC_Common/` (dieselbe Basis nutzen RC-Multiswitch C3/S3 und die Soundmodule, siehe `src/RC_Common/README.md`). Die Arduino-IDE kompiliert den Unterordner automatisch mit. Benötigt werden zusätzlich die Bibliotheken *Bolder Flight Systems SBUS* 8.1.4 und *TinyGPSPlus* 1.0.3 (RC_Common enthält die GPS-Rolle der anderen Module; der Multiswitch nutzt sie nicht, die Datei wird aber mitkompiliert).
 

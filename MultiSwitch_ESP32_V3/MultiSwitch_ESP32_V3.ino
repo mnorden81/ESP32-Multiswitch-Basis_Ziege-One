@@ -1,8 +1,8 @@
 /*
     ESP32-MultiSwitch  v3.17
    v3.00 erstellt von: PiperPilot - eigenstaendiges, unabhaengig baubares
-   Projekt, abgezweigt von ESP32-MultiSwitch v2.02 (siehe ESP32_Multiswitch_2/
-   ESP32-Multiswitch-CRSF-bidirektional/). v2.xx bleibt unveraendert bestehen.
+   Projekt, abgezweigt von ESP32-MultiSwitch v2.02 (Ordner MultiSwitch_ESP32/
+   in diesem Repo). v2.xx bleibt unveraendert bestehen.
    v2.00 erstellt von: PiperPilot
    Basiert auf: ESP32-SBus-Switch 0.6   (Ziege-One / Der RC-Modellbauer)
    CRSF-Integration: ESP32-RC-Sound 0.43 (Ziege-One / Der RC-Modellbauer)
@@ -38,177 +38,13 @@
    3 = HoTT           (SBUS)
    4 = CRSF           (ExpressLRS / TBS CrossFire, bidirektional)
 
- ÄNDERUNGEN v3.17 (RC_Common 1.3.0, Lua wie RC-Multiswitch-Sound v1.05):
-   - FIX: Lange Lua-Auswahlfelder (z. B. Ausgang-Quelle mit MKan) kommen
-     Chunk fuer Chunk wie vom Sender angefragt. Vorher zeigte das ELRS-Lua
-     ihren Wert nicht oder unvollstaendig.
-   - Ordnernamen zeigen den aktuellen Wert: "Ausgang 1 (Kanal_L 5)",
-     "Global (Adr 0)".
-   - Felder ohne Wirkung werden ausgeblendet (Feld-IDs bleiben): Global
-     "SBUS EK Kanal" (vorher "CRSF Kanal", wirkt nur bei SBUS), Blinkzeiten
-     bei Dauerlicht, PWM Festwert bei MWprop.
-   - FIX: Lua-Feld "Version" zeigte eine alte Version, jetzt aus Version.
-
- ÄNDERUNGEN v3.15 (RC_Common 1.2.0):
-   - NEU: Einstellungs-Backup im Flash des Moduls (Tab WLAN, Karte
-     "Konfiguration sichern"): "Im Modul sichern", Liste der Backups,
-     wiederherstellen und loeschen. Inhalt wie beim Export als Datei.
-     Gehalten werden die letzten 5 von Hand gesicherten Backups.
-   - NEU: Vor jedem Import (Datei oder Flash) und vor jedem
-     Firmware-Update per WLAN sichert die Weboberflaeche den aktuellen
-     Stand automatisch (die letzten 3 bleiben).
-   - Braucht ein Partitionsschema mit SPIFFS-Bereich (Standard
-     "Default 4MB with spiffs"). Das Backup uebersteht Flashen aus der
-     IDE und OTA, nicht aber "Erase All Flash" oder ein anderes
-     Partitionsschema.
-
- ÄNDERUNGEN v3.14 (gemeinsame Basis RC_Common 1.1.0):
-   - Gemeinsamer Code aller ESP32-Module liegt jetzt in src/RC_Common/
-     (identische Kopie in jedem Projekt, siehe src/RC_Common/README.md):
-     CRSF-Bibliothek 1.1.0, Lua-Menue als Tabelle, NVS-Schluessel,
-     WLAN-Failsafe, Status-LED, OTA-Upload, JSON-Helfer. Der Ordner
-     src/CRSF_ESP32/ entfaellt.
-   - FIX: SBUS-Zeitlimit (wie RC-Multiswitch v4.03). Kommen 10 s lang gar
-     keine SBUS-Frames (Stecker ab, Empfaenger ohne Strom), gilt das
-     Signal als weg: BUS_OK wird false, die Ausgaenge gehen aus und das
-     WLAN-Auto-Failsafe kann greifen. Vorher blieb ohne Frames der letzte
-     Zustand stehen. Siehe checkSbusTimeout().
-   - Status-LED (GPIO 2) mit den gemeinsamen Mustern: aus = kein Signal,
-     langsam 500/500 ms = OK, schnell 100/100 ms = Frames ohne RC-Link bzw.
-     SBUS-Failsafe.
-   - Lua-Menue als Tabelle (buildLuaMenu()), gleiche Feld-IDs 0-80.
-   - NVS: gemeinsame Schluessel wip, madr, wfauto, wftmo, wfalways
-     (RC_Common settings_common.h). Beim ersten Start werden die alten
-     Werte (ip, mod_adr, wauto, watout, walways) einmalig uebernommen; die
-     alten Schluessel bleiben fuer ein Zurueckspielen stehen.
-
- ÄNDERUNGEN v3.13 (gemeinsame CRSF-Bibliothek):
-   - CRSF-Code als gemeinsame Bibliothek src/CRSF_ESP32/ (CRSF_ESP32
-     v1.0.0, identisch mit Soundmodul und den anderen Varianten).
-   - Fix: Empfangs-Parser verliert keine Frames mehr, die ueber zwei
-     loop()-Durchlaeufe verteilt ankommen (vorher verloren und als
-     CRC-Fehler gezaehlt). Link-Statistik, Command-CRC und FOLDER-Laenge
-     laut CRSF-Spezifikation korrigiert.
-
- ÄNDERUNGEN v3.12 (CRSF-Fix, übernommen aus v2.03):
-   - CRSF "Parameter Version Number" im DEVICE_INFO-Frame war fest 0x00;
-     jetzt wird die Firmware-Version mitgegeben (siehe send_device_info()).
-     Damit lesen Konfiguratoren wie TBS Agent eine geaenderte
-     Parameterstruktur neu ein.
-
- ÄNDERUNGEN v3.10 (Mehrfachkonfiguration pro Ausgang):
-   - NEU: bis zu 3 unabhängige (Kanal-Quelle -> Blink/PWM)-Konfigurationen
-     je Ausgang, Priorität Konfig 1 > Konfig 2 > Konfig 3 - ist Konfig 1
-     aktiv, gilt deren Blink/PWM, unabhängig davon ob 2/3 ebenfalls aktiv
-     wären; erst wenn 1 inaktiv ist, wird 2 geprüft, usw.
-   - Konfig 1 = weiterhin Ausgang_Kanal[]/mode[]/pwm_wert[] (unverändert,
-     bleibt auch im CRSF-LUA-Menü erreichbar). Konfig 2/3 = NEU
-     (Ausgang_Kanal2/3[], mode2/3[], pwm_wert2/3[]), aktuell NUR über die
-     Web-UI konfigurierbar, nicht über das LUA-Menü (hält dessen Feldzahl
-     bei ~80 statt ~200).
-   - Neue Helfer evalSlotActive() (prüft eine (Kanal,PWM)-Konfiguration auf
-     aktiv/inaktiv - vorher inline in Output()) und getPwmDuty(int pv)
-     (Signatur geändert: nimmt jetzt den PWM-Wert direkt statt intern
-     pwm_wert[x] zu lesen, da je nach aktiver Konfiguration ein anderes
-     Array gilt).
-   - NVS: 6 neue Preferences-Keys pro Ausgang (ak2_x/pw2_x/mo2_x/ak3_x/
-     pw3_x/mo3_x), Default bei fehlendem Key = Konfiguration ungenutzt
-     (255/255/0) - Update von v3.00 lädt bestehende Konfig 1 unverändert,
-     Konfig 2/3 automatisch als "aus".
-   - NICHT verändert: Konfig-1-Verhalten/-Timing, MKan-Gruppenlogik (V3.00),
-     Hardware-Pinbelegung, manueller Web-UI-Override (nutzt weiterhin
-     immer mode[x]/pwm_wert[x], unabhängig von Konfig 2/3).
-
- ÄNDERUNGEN v3.00 (MKan-Mehrfachadress-Erweiterung, Konzept + Vorbild aus dem
- Soundmodul-Projekt ESP32-RC-Sound firmware-v7, dort config.h/
- ESP32-RC-Sound.ino "MKan" Quelltyp 80-95):
-   - NEU: 2 zusätzliche, unabhängige 8-Bit-Kanalquellen ("MKan1"/"MKan2")
-     zusätzlich zur bestehenden Einzelkanal-Adresse (modul_adress/
-     einkanal_mode - unverändert). Bei CRSF über 2 frei konfigurierbare
-     Gruppenadressen (EK_Gruppen_Adresse[], 255=aus), bei SBUS über 2 fest
-     zugewiesene SBUS-Kanäle (SBUS_Gruppen_Channel[]/SBUS_Gruppen_Mode[]).
-     Ergebnis in einkanal_Flat16 (16 Bit), ausgewertet in Output() über
-     Ausgang_Kanal 80-95 (80-87 = MKan1 Bit 0-7, 88-95 = MKan2 Bit 0-7).
-   - Neue Funktionen: updateGroupFromAddress() (CRSF-Gruppenadress-Abgleich,
-     aufgerufen aus einkanalFunctionCRSF()/MWset4/MWset4m) und
-     einkanalFunctionSBUSGroup() (SBUS-Pendant, eigenständige Funktion,
-     bestehende einkanalFunctionSBUS() bewusst unverändert gelassen).
-   - Web-UI: neue Karte "MKan-Gruppen (V3)" im RC-Tab (Adresse bzw.
-     Kanal+Modus je Gruppe) + 2 neue Einträge in der Kanalquellen-Auswahl
-     pro Ausgang ("MKan1"/"MKan2"). CRSF-LUA-Menü: "Ausgang-Quelle" pro
-     Ausgang um MKan1/MKan2 erweitert; die beiden Gruppenadressen/-kanäle
-     selbst sind aktuell NUR über die Web-UI konfigurierbar, nicht über
-     das LUA-Menü (bewusst kleiner gehalten, siehe README).
-   - NVS: 6 neue Preferences-Keys (gadr0/1, gch0/1, gmod0/1), Defaults
-     255/999/0 (= alle Gruppen aus) - Firmware-Wechsel auf einem bereits
-     mit v2.xx betriebenen Board bootet damit unverändert ohne Migration.
-   - Versionsstring in der CRSF-INFO-Antwort ("v1.42 ESP32", war seit v2.xx
-     nicht mehr mit der numerischen Version synchron) auf "v3.00 ESP32"
-     korrigiert.
-   - NICHT verändert: Output-Timing/Blink-Logik, Einzelkanal-Auswertung
-     (modul_adress/einkanal_mode), Hardware-Pinbelegung, PWM/MWprop.
-
- ÄNDERUNGEN v2.00 (übertragen aus dem Soundmodul-Projekt, ESP32-RC-Sound v7):
-   - CRSF-Diagnose-Zähler (rohe Bytes, gültige Frames, CRC-Fehler, PING/
-     PARAM-READ/WRITE) in crsf_esp32.h/.cpp, sichtbar im Debug-Tab der
-     Weboberfläche - macht "geht nicht" ohne Seriell-Monitor sichtbar.
-   - BUS_OK bei CRSF jetzt an den Zähler für gültige Frames gekoppelt statt
-     an "channel_output[0] > 0" (ein Kanalwert von 0 ist legitim und kein
-     zuverlässiger Nachweis für einen frischen Frame).
-   - CRC-Fehler werden gezählt statt bei jedem einzelnen Fehler sofort per
-     Serial.println() ausgegeben - verhindert, dass anhaltendes Funkrauschen
-     den Loop ausbremst; Sammel-Meldung höchstens alle 2s.
-   - updateDevice_Info() gegen zu kurze/kaputte DEVICE_INFO-Frames
-     abgesichert (signed-Rechnung + Mindestlängen-Check).
-   - CRSF_FRAMETYPE_COMMAND prüft jetzt die Zieladresse wie PING/PARAMETER_
-     READ/WRITE (mit Broadcast-Ausnahme fürs WM-Protokoll).
-   - Konfiguration exportieren/importieren als JSON-Datei über den Browser
-     (kein SD-Karten-Slot vorhanden - rein Web/WLAN-basiert), siehe webui.h.
-   - WLAN-Steuerung: optionales Auto-Failsafe schaltet den Access Point
-     automatisch ein, wenn längere Zeit kein gültiges RC-Signal anliegt
-     (z.B. Sender aus/außer Reichweite) - Default AN seit v2.01, siehe
-     wifiFailsafeCheck() unten. Ergänzend manueller "WLAN jetzt ein/aus"-
-     Schalter (Web-UI), der ohne Neustart sofort wirkt, siehe webui.h.
-   - Firmware-Update per WLAN (OTA): eine mit der Arduino-IDE gebaute
-     .bin-Datei wird direkt im Browser hochgeladen und landet im gerade
-     inaktiven OTA-Flash-Segment - Ausbauen/USB-Flashen ist für spätere
-     Updates damit nicht mehr nötig. Schlägt der Upload fehl oder wird er
-     abgebrochen, bootet das Modul unverändert mit der bisherigen
-     Firmware weiter (kein Bricking-Risiko), siehe
-     handleOtaUpdateData()/handleOtaUpdate() in webui.h. Voraussetzung:
-     einmalig ein OTA-fähiges Partitionsschema per USB flashen, siehe
-     README. WICHTIG (Erfahrung aus dem Soundmodul-Projekt übernommen):
-     Update möglichst bei über ESC/Akku bestromtem Modul durchführen,
-     nicht nur über USB - manche USB-Anschlüsse liefern beim
-     Flash-Schreiben nicht genug Strom, ein dadurch ausgelöster Reset
-     bricht den Upload mittendrin ab.
-   - eeprom_esp32.h/hal_esp32.h/output_ctrl.h sind weiterhin NICHT
-     eingebunden (totes Code-Fragment eines nicht gemergten Refactorings,
-     jetzt oben in den Dateien selbst als solches gekennzeichnet).
-   - Fix (nach erstem Test): webui_init() rief webServer.begin() bisher
-     unabhängig vom AP-Status auf, ohne den WiFi-Treiber vorher zu
-     initialisieren. War der AP beim Booten nicht aktiv, fehlten dessen
-     interne FreeRTOS-Queues und es kam zum sofortigen Absturz
-     (assert failed: xQueueSemaphoreTake) mit Bootloop. Behoben durch
-     WiFi.mode(WIFI_AP) am Anfang von webui_init() (siehe webui.h).
-
- ÄNDERUNGEN v0.14 (Verbesserungen):
-   - MWprop-Unterstützung aus ESP32-RC-Sound übernommen:
-     Lautstärke/PWM-Steuerung einzelner Ausgänge über CRSF-Kanal möglich.
-   - wm_prop_value[8] Speicher für MWprop-Kanalwerte (duty 0–255).
-   - nvsSave() jetzt nur noch bei tatsächlicher Änderung (nvsDirty-Flag
-     war schon vorhanden, wird nun auch in webui korrekt gesetzt).
-   - CRSF-Einkanal-Timeout erhöht auf 2000 ms (war 1000 ms) –
-     robuster bei kurzen Signalunterbrechungen.
-   - Output(): pwm_wert >= 300 Mapping auf benannte Konstante ausgelagert.
-   - Konsistente Verwendung von static constexpr überall.
-   - README.md aktualisiert.
+ Versionsgeschichte: siehe CHANGELOG.md im Hauptordner des Repos.
 */
 
 // ======== Bibliotheken ==========================================
 /*
   Bolder Flight Systems SBUS  8.1.4   (für RC_System 0-3)
-  RC_Common 1.0.0 im Sketch-Ordner src/RC_Common/ (v3.14), enthaelt
+  RC_Common 1.4.0 im Sketch-Ordner src/RC_Common/, enthaelt
     CRSF_ESP32 1.1.0, Basis https://github.com/Ziege-One/CRSF_ESP32
 */
 
@@ -228,7 +64,6 @@
 #include "src/RC_Common/config_backup.h"   // v3.15
 
 constexpr uint16_t Version = 317; // 3.17 - Lua: Chunk-Fix (RC_Common 1.3.0), Werte in Ordnernamen, unpassende Felder ausgeblendet.
-// 3.16 - Lua: "PWM Festwert" bleibt bei PWM Modus MWprop ein Zahlenfeld (gesperrt) statt Info-Feld - sonst erst nach Menue-Verlassen einstellbar.
 
 // ======== SBUS-Schwellen (benannte Konstanten) ==================
 static constexpr uint16_t SBUS_LOW_THRESHOLD  =  800;
