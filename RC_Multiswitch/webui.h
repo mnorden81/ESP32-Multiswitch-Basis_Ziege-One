@@ -143,6 +143,23 @@ main{max-width:560px;margin:0 auto;padding:20px 14px 60px}
 .badge-ok{background:#0d2c16;color:var(--green)}
 .badge-err{background:#2c0d0d;color:var(--red)}
 .badge-warn{background:#2c200d;color:var(--yellow)}
+/* NEU Funk */
+.funk-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.funk-name{font-size:17px;font-weight:700}
+.amp{width:14px;height:14px;border-radius:50%;background:var(--sub);flex:none}
+.amp.g{background:var(--green);box-shadow:0 0 8px var(--green)}
+.amp.y{background:var(--yellow);box-shadow:0 0 8px var(--yellow)}
+.amp.r{background:var(--red);box-shadow:0 0 8px var(--red)}
+.fstat{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.fstat div{background:var(--surf2);border:1px solid var(--border);border-radius:6px;padding:6px 8px}
+.fstat b{display:block;font-family:var(--mono);font-size:15px}
+.fstat span{font-size:11px;color:var(--sub)}
+.peer{border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;background:var(--surf2)}
+.peer-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.peer-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px 10px;font-size:12px}
+.peer-grid span{color:var(--sub);display:block;font-size:11px}
+.peer-grid b{font-family:var(--mono);font-weight:400}
+.mac{font-family:var(--mono);font-size:11px;color:var(--sub)}
 .sep{border:none;border-top:1px solid var(--border);margin:12px 0}
 .mono{font-family:var(--mono);font-size:12px}
 /* Output detail */
@@ -173,6 +190,7 @@ main{max-width:560px;margin:0 auto;padding:20px 14px 60px}
   <div class="tab active" onclick="showTab('overview')">Übersicht</div>
   <div class="tab" onclick="showTab('outputs')">Ausgänge</div>
   <div class="tab" onclick="showTab('rc')">RC-System</div>
+  <div class="tab" id="tab-btn-funk" style="display:none" onclick="showTab('funk')">Funk</div>
   <div class="tab" onclick="showTab('wifi')">WiFi</div>
   <div class="tab" onclick="showTab('debug')">Debug</div>
 </nav>
@@ -182,6 +200,9 @@ main{max-width:560px;margin:0 auto;padding:20px 14px 60px}
     <div class="grid" id="tile-grid"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
       <button class="btn btn-ghost btn-sm" onclick="releaseAll()">🔓 Alle freigeben</button>
+    </div>
+    <div class="card" id="card-funk-ov" style="display:none;cursor:pointer" onclick="showTab('funk')">
+      <div style="display:flex;align-items:center;gap:8px"><span class="amp" id="ov-funk-amp"></span><span id="ov-funk-text"></span></div>
     </div>
     <div class="card" id="card-channels" style="display:none">
       <div class="card-title">RC-Kanalwerte</div>
@@ -233,6 +254,8 @@ main{max-width:560px;margin:0 auto;padding:20px 14px 60px}
           <option value="2">ELRS normiert (SBUS)</option>
           <option value="3">HoTT (SBUS)</option>
           <option value="4">CRSF (ELRS/TBS)</option>
+          <option value="5">CRSF + Funk senden (Zentrale)</option>
+          <option value="6">CRSF aus Funk (Teilnehmer)</option>
         </select>
       </div>
 
@@ -304,6 +327,36 @@ main{max-width:560px;margin:0 auto;padding:20px 14px 60px}
       </div>
 
       <span style="color:var(--sub);font-size:12px;display:block;margin-top:6px" id="rc-hint"></span>
+    </div>
+
+    <!-- NEU Funk: Einstellungen, nur bei RC-System 5/6 -->
+    <div class="card" id="card-funk-cfg" style="display:none">
+      <div class="card-title">Funk (ESP-NOW)</div>
+      <div class="row"><label>Fahrzeug-Kennung</label>
+        <input type="number" id="inp-funk-id" min="1" max="255" onchange="onFunkCfg()" style="width:90px">
+      </div>
+      <div class="row"><label>Funkkanal</label>
+        <select id="sel-funk-ch" onchange="onFunkCfg()"></select>
+      </div>
+      <div class="row"><label>Sendeleistung</label>
+        <select id="sel-funk-pwr" onchange="onFunkCfg()">
+          <option value="2">2 dBm</option><option value="5">5 dBm</option><option value="8">8 dBm</option>
+          <option value="11">11 dBm</option><option value="15">15 dBm</option><option value="20">20 dBm</option>
+        </select>
+      </div>
+      <div class="row" id="row-funk-rate"><label>Kanäle alle</label>
+        <select id="sel-funk-rate" onchange="onFunkCfg()">
+          <option value="0">jeder Frame</option><option value="5">5 ms</option><option value="10">10 ms</option>
+          <option value="20">20 ms</option><option value="50">50 ms</option>
+        </select>
+      </div>
+      <div class="row" id="row-funk-back"><label>Rückkanal</label>
+        <select id="sel-funk-back" onchange="onFunkCfg()">
+          <option value="1">An (Lua, Telemetrie)</option><option value="0">Aus (nur empfangen)</option>
+        </select>
+      </div>
+      <span style="color:var(--sub);font-size:12px;display:block;margin-top:6px" id="funk-help"></span>
+      <span style="font-size:12px;display:block;margin-top:6px" id="funk-hint"></span>
     </div>
 
     <!-- MKan-Gruppen (NEU V3.00): 2 zusaetzliche, unabhaengige Kanalquellen -->
@@ -407,6 +460,32 @@ main{max-width:560px;margin:0 auto;padding:20px 14px 60px}
   </div>
 
   <!-- WiFi -->
+  <!-- NEU Funk: Verbindungsqualitaet, jede Sekunde neu -->
+  <div id="tab-funk" style="display:none">
+    <div class="card">
+      <div class="funk-head">
+        <span class="amp" id="f-amp"></span>
+        <span class="funk-name" id="f-name"></span>
+        <span class="badge" id="f-role"></span>
+        <span class="badge" id="f-state"></span>
+      </div>
+      <div class="mac" id="f-sub" style="margin-top:6px"></div>
+      <div id="f-warn" style="display:none;margin-top:8px;color:var(--yellow);font-size:12px"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Dieses Modul, pro Sekunde</div>
+      <div class="fstat" id="f-own"></div>
+    </div>
+    <div class="card">
+      <div class="card-title" id="f-peers-title">Gegenstellen</div>
+      <div id="f-peers"></div>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button class="btn btn-ghost btn-sm" onclick="funkReset()">Zähler zurücksetzen</button>
+      </div>
+      <span style="color:var(--sub);font-size:12px;display:block;margin-top:8px">Ampel: grün = Verlust unter 1 % und RSSI über −75 dBm, gelb = bis 5 % oder bis −85 dBm, rot = schlechter.</span>
+    </div>
+  </div>
+
   <div id="tab-wifi" style="display:none">
     <div class="card">
       <div class="card-title">Zugangspunkt</div>
@@ -511,14 +590,16 @@ main{max-width:560px;margin:0 auto;padding:20px 14px 60px}
 let state={},curOut=-1,pollTimer=null;
 const $ = id => document.getElementById(id);
 
+const TABS=['overview','outputs','rc','funk','wifi','debug'];   // NEU Funk
 function showTab(t){
-  ['overview','outputs','rc','wifi','debug'].forEach(n=>{
+  TABS.forEach(n=>{
     $('tab-'+n).style.display=(n===t?'block':'none');
   });
-  document.querySelectorAll('.tab').forEach((el,i)=>{
-    el.classList.toggle('active',['overview','outputs','rc','wifi','debug'][i]===t);
+  document.querySelectorAll('nav .tab').forEach((el,i)=>{
+    el.classList.toggle('active',TABS[i]===t);
   });
   if(t==='debug') startPoll(); else stopPoll();
+  if(t==='funk') startFunkPoll(); else stopFunkPoll();
   if(t==='overview'||t==='outputs'||t==='wifi') fetchStatus();
   if(t==='rc'||t==='wifi') fetchConfig();
 }
@@ -538,6 +619,7 @@ async function fetchStatus(){
   if(apEl) apEl.textContent=d.wifi_ap_active?'an':'aus';
   renderTiles(d);
   if(curOut>=0) renderOutDetail(d,curOut);
+  showFunkSummary(d.funk);   // NEU Funk
   // Kanalwerte auf Startseite
   if(d.channels && d.bus_ok){
     $('card-channels').style.display='';
@@ -683,7 +765,7 @@ function renderOutDetail(d,i){
   const sb=$('out-state-big');
   sb.textContent=o.on?'AN':'AUS';
   sb.className='state-big '+(o.on?'state-on':'state-off');
-  const isCrsf=(state&&state.rc_system_boot===4);
+  const isCrsf=(state&&state.rc_system_boot>=4);   // NEU Funk
 
   // NEU V3.10: bis zu 3 Konfigurationen pro Ausgang, Prioritaet 1>2>3 -
   // Konfig1 = bisheriges kanal/mode/pwm, Konfig2/3 = kanal2/mode2/pwm2 bzw.
@@ -790,6 +872,93 @@ async function onBoardChange(){
   $('board-hint').innerHTML='Gespeichert, wirkt nach Neustart. <a href="#" onclick="restartForPorts();return false">Jetzt neu starten</a>';
 }
 
+// ─── NEU Funk (RC_Common 1.5.0 funk_link) ───────────────────────────
+function funkAmp(loss,rssi,ok){
+  if(!ok) return 'r';
+  if(loss<1&&rssi>-75) return 'g';
+  if(loss<=5&&rssi>=-85) return 'y';
+  return 'r';
+}
+function fmtLoss(v){return v.toFixed(1).replace('.',',')+' %';}
+function showFunkSummary(f){
+  const on=!!(f&&f.role);
+  $('tab-btn-funk').style.display=on?'':'none';
+  $('card-funk-ov').style.display=on?'':'none';
+  if(!on) return;
+  const n=f.peers;
+  $('ov-funk-amp').className='amp '+funkAmp(f.loss,f.rssi,f.connected);
+  $('ov-funk-text').textContent=f.connected
+    ?`Funk (${f.role}): verbunden, ${n} ${n===1?'Gegenstelle':'Gegenstellen'}, ${fmtLoss(f.loss)} Verlust`
+    :`Funk (${f.role}): keine Funk-Verbindung`;
+}
+function fillFunkCfg(d){
+  const s=$('sel-funk-ch');
+  if(!s.options.length) for(let c=1;c<=13;c++) s.add(new Option('Kanal '+c+([1,6,11].includes(c)?' (empfohlen)':''),c));
+  $('inp-funk-id').value=d.funk_id; s.value=d.funk_ch;
+  $('sel-funk-pwr').value=d.funk_pwr; $('sel-funk-rate').value=d.funk_rate;
+  $('sel-funk-back').value=d.funk_back?1:0;
+}
+function showFunkCfg(rc){
+  $('card-funk-cfg').style.display=(rc===5||rc===6)?'':'none';
+  $('row-funk-rate').style.display=rc===5?'':'none';
+  $('row-funk-back').style.display=rc===6?'':'none';
+  $('funk-help').textContent=rc===5
+    ?'Zentrale: Kanäle kommen vom Empfänger am Kabel und gehen zusätzlich in den Funk. Pro Fahrzeug genau eine Zentrale.'
+    :'Teilnehmer: Kanäle kommen aus dem Funk, der Kabel-Eingang (UART A) bleibt frei. Kennung und Kanal wie bei der Zentrale einstellen.';
+}
+async function onFunkCfg(){
+  const id=Math.max(1,Math.min(255,parseInt($('inp-funk-id').value)||1));
+  $('inp-funk-id').value=id;
+  await api('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({funk_id:id,funk_ch:parseInt($('sel-funk-ch').value),
+      funk_pwr:parseInt($('sel-funk-pwr').value),funk_rate:parseInt($('sel-funk-rate').value),
+      funk_back:$('sel-funk-back').value==='1'})});
+  const h=$('funk-hint');
+  h.innerHTML='Gespeichert, wirkt nach Neustart. <a href="#" onclick="restartForPorts();return false">Jetzt neu starten</a>';
+  h.style.color='var(--green)';
+}
+let funkTimer=null;
+function startFunkPoll(){fetchFunk();funkTimer=setInterval(fetchFunk,1000);}
+function stopFunkPoll(){clearInterval(funkTimer);}
+async function funkReset(){await api('/api/funk/reset',{method:'POST'});fetchFunk();}
+async function fetchFunk(){
+  const f=await api('/api/funk');
+  if(!f) return;
+  const ok=f.connected;
+  $('f-amp').className='amp '+funkAmp(f.loss,f.rssi,ok);
+  $('f-name').textContent=f.name+' @'+f.addr_nr;
+  $('f-role').textContent=f.role; $('f-role').className='badge badge-ok';
+  $('f-state').textContent=ok?'Funk-Verbindung da':'keine Funk-Verbindung';
+  $('f-state').className='badge '+(ok?'badge-ok':'badge-err');
+  $('f-sub').textContent=`Kennung ${f.id} · Kanal ${f.ch} · ${f.pwr} dBm · CRSF-Adresse ${f.addr} · MAC ${f.mac}`;
+  const w=[];
+  if(f.conflict) w.push('⚠ Funk-Konflikt: eine zweite Zentrale mit derselben Kennung ist im Funk. Pro Fahrzeug nur eine Zentrale.');
+  if(f.dup_addr) w.push('⚠ Adresskonflikt: eine Gegenstelle hat dieselbe CRSF-Adresse ('+f.addr+'). Ihre Lua-Menüs stören sich. Modul-Adresse im Reiter RC-System ändern.');
+  if(!ok&&f.role==='Teilnehmer') w.push('Failsafe: seit '+(f.lost_ms/1000).toFixed(1).replace('.',',')+' s nichts von der Zentrale. Ausgänge aus, an UART B/C geht nichts weiter.');
+  $('f-warn').style.display=w.length?'':'none'; $('f-warn').innerHTML=w.join('<br>');
+  const o=f.own, Z=(f.role==='Zentrale');
+  const tiles=Z
+    ?[[o.ch_cable,'Kanäle vom Kabel'],[o.frames_out,'Frames in den Funk'],[o.frames_in,'Antworten aus Funk'],
+      [o.sent,'Pakete gesendet'],[o.noack,'nicht zugestellt'],[o.qfull,'Warteschlange voll']]
+    :[[o.ch_funk,'Kanäle aus Funk'],[o.frames_in,'Frames aus Funk'],[o.frames_out,'Antworten in den Funk'],
+      [o.sent,'Pakete gesendet'],[o.noack,'nicht zugestellt'],[o.qfull,'Warteschlange voll']];
+  $('f-own').innerHTML=tiles.map(t=>`<div><b>${t[0]}</b><span>${t[1]}</span></div>`).join('');
+  $('f-peers-title').textContent='Gegenstellen ('+f.peers.length+')';
+  $('f-peers').innerHTML=f.peers.length?f.peers.map(p=>{
+    const a=funkAmp(p.loss,p.rssi,p.alive);
+    return `<div class="peer"><div class="peer-top"><span class="amp ${a}"></span><b>${p.name}</b>`+
+      `<span class="badge ${p.role==='Zentrale'?'badge-warn':'badge-ok'}">${p.role}</span>`+
+      `<span class="mac">${p.addr} · ${p.mac}</span></div>`+
+      `<div class="peer-grid">`+
+      `<div><span>${Z?'Antworten/s':'Pakete/s'}</span><b>${p.pps}</b></div>`+
+      `<div><span>Verlust</span><b>${fmtLoss(p.loss)}</b></div>`+
+      `<div><span>RSSI</span><b>${p.rssi} dBm</b></div>`+
+      `<div><span>Aussetzer &gt;200 ms</span><b>${p.drops}</b></div>`+
+      `<div><span>längste Lücke</span><b>${p.gap} ms</b></div>`+
+      `<div><span>verbunden seit</span><b>${p.up}</b></div></div></div>`;
+  }).join(''):'<div style="color:var(--sub);font-size:13px">Noch keine Gegenstelle gefunden. Kennung und Funkkanal müssen bei allen Teilen gleich sein.</div>';
+}
+
 async function fetchConfig(){
   const d=await api('/api/config');
   if(!d)return;
@@ -829,6 +998,7 @@ async function fetchConfig(){
   $('portb-none').style.display=d.has_portb===false?'block':'none';
   $('port-rows').style.display=d.has_portb===false?'none':'';
   showBoard(d);
+  fillFunkCfg(d);   // NEU Funk
   updateRcRows(d.rc_system, ek);
   window._rcBoot=parseInt(d.rc_system);
 }
@@ -836,7 +1006,8 @@ async function fetchConfig(){
 // Sichtbarkeit der Rows je nach RC-System und Einkanal-Status
 // RC-Sound Logik: CRSF -> nur Modul-Adresse; SBUS -> Kanal + (wenn aktiv) Modus
 function updateRcRows(rc, ek){
-  const isCrsf=(parseInt(rc)===4);
+  const isCrsf=(parseInt(rc)>=4);   // NEU Funk: 5/6 sind CRSF
+  showFunkCfg(parseInt(rc));
   const ekAktiv=(ek!==999);
   $('row-sbus-ch').style.display=isCrsf?'none':'';
   $('row-ek').style.display=(isCrsf||!ekAktiv)?'none':'';
@@ -856,7 +1027,7 @@ async function onRcChange(){
   const curEk=parseInt($('sel-ek').value)||0;
   updateRcRows(newRc, $('sel-sbus-ch').value==999?999:curEk);
   const oldRc=window._rcBoot||newRc;
-  const needsRestart=(newRc===4)!==(oldRc===4);
+  const needsRestart=(newRc!==oldRc)&&(newRc>=4||oldRc>=4);   // NEU Funk: startet beim Booten
   await api('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({rc_system:newRc})});
   const hint=$('rc-hint');
@@ -930,7 +1101,7 @@ async function onAdrChange(){
 }
 // NEU V3.00: MKan-Gruppe g (0 oder 1) - Adresse (CRSF) bzw. Kanal+Modus (SBUS)
 async function onMkanChange(g){
-  const isCrsf=(parseInt($('sel-rc').value)===4);
+  const isCrsf=(parseInt($('sel-rc').value)>=4);
   const body={};
   if(isCrsf){
     body['ek_gadr'+g]=parseInt($('sel-mkan-adr'+g).value);
@@ -1215,6 +1386,8 @@ static const char* rcName(int sys) {
         case 2: return "ELRS SBUS";
         case 3: return "HoTT SBUS";
         case 4: return "CRSF";
+        case 5: return "CRSF + Funk (Zentrale)";   // v5.01
+        case 6: return "CRSF aus Funk (Teilnehmer)";
         default: return "Unbekannt";
     }
 }
@@ -1314,7 +1487,8 @@ static void handleStatus() {
         j += ",\"kmh\":"  + String(gpsGetSpeedKmh(), 1) + "}";
     }
     j += "},";
-    j += "\"wifi_ap_active\":" + String(webui_isApActive() ? "true" : "false");
+    j += "\"wifi_ap_active\":" + String(webui_isApActive() ? "true" : "false") + ",";
+    j += "\"funk\":" + funk.summaryJson();   // v5.01: Funk (null ohne Funk)
 
     j += "}";
     sendJson(j);
@@ -1366,7 +1540,11 @@ static void handleConfig() {
         j += "\"board_info\":{\"name\":\"" + String(boardName()) + "\",\"chip\":\"" BOARD_CHIP "\",";
         j += "\"rx\":" + String(UART_A_RX) + ",\"tx\":" + String(UART_A_TX) + ",\"out\":[";
         for (int i = 0; i < 8; i++) { if (i) j += ","; j += String(OutPin[i]); }
-        j += "],\"led\":\"" BOARD_LED_TEXT "\",\"wifi\":\"" BOARD_WIFI_TEXT "\"}";
+        j += "],\"led\":\"" BOARD_LED_TEXT "\",\"wifi\":\"" BOARD_WIFI_TEXT "\"},";
+        // v5.01: Funk (wirkt nach Neustart)
+        j += "\"funk_id\":" + String(g_funk.id) + ",\"funk_ch\":" + String(g_funk.ch);
+        j += ",\"funk_pwr\":" + String(g_funk.pwr) + ",\"funk_rate\":" + String(g_funk.rateMs);
+        j += ",\"funk_back\":" + String(g_funk.back ? "true" : "false");
         j += "}";
         sendJson(j);
         return;
@@ -1382,8 +1560,21 @@ static void handleConfig() {
       g_board = (uint8_t)v; changed = true;
     }
     if (webJsonInt(body, "rc_system", v)) {
-      v = constrain(v, 0, 4);
+      v = constrain(v, 0, 6);   // v5.01: 5 = Funk-Zentrale, 6 = Funk-Teilnehmer
       if (v != RC_System) { RC_System = v; changed = true; }
+    }
+    // v5.01: Funk-Einstellungen (wirken nach Neustart)
+    {
+      FunkConfig fc = g_funk;
+      bool fb = fc.back;
+      if (webJsonInt(body, "funk_id", v))   fc.id     = (uint8_t)constrain(v, 1, 255);
+      if (webJsonInt(body, "funk_ch", v))   fc.ch     = (uint8_t)constrain(v, 1, 13);
+      if (webJsonInt(body, "funk_pwr", v))  fc.pwr    = (uint8_t)constrain(v, 2, 20);
+      if (webJsonInt(body, "funk_rate", v)) fc.rateMs = (uint8_t)constrain(v, 0, 50);
+      if (webJsonBool(body, "funk_back", fb)) fc.back = fb;
+      funkConfigClamp(fc);
+      if (fc.id != g_funk.id || fc.ch != g_funk.ch || fc.pwr != g_funk.pwr ||
+          fc.rateMs != g_funk.rateMs || fc.back != g_funk.back) { g_funk = fc; changed = true; }
     }
     if (webJsonInt(body, "crsf_channel", v)) {
       if ((v >= 0 && v <= 15) || v == 999) {
@@ -1679,7 +1870,9 @@ void webui_enableAP() {
     if (!apIP.fromString(g_wifi_ip)) apIP.fromString("192.168.1.1");
     gw = apIP;
     WiFi.softAPConfig(apIP, gw, subnet);
-    WiFi.softAP(g_wifi_ssid, g_wifi_pass);
+    // v5.01: mit Funk auf dessen Kanal (ein Funkteil fuer beides)
+    WiFi.softAP(g_wifi_ssid, g_wifi_pass, funk.active() ? funk.channel() : 1);
+    funk.wifiChanged();
     g_apActive = true;
     Serial.printf("AP gestartet (Heap frei: %u Bytes), IP: %s\n",
                   (unsigned)ESP.getFreeHeap(), WiFi.softAPIP().toString().c_str());
@@ -1687,7 +1880,8 @@ void webui_enableAP() {
 
 void webui_disableAP() {
     if (!g_apActive) return;
-    WiFi.softAPdisconnect(true);
+    WiFi.softAPdisconnect(true);   // mit Funk bleibt die STA-Seite (ESP-NOW) an
+    funk.wifiChanged();
     g_apActive = false;
     Serial.println("AP gestoppt.");
 }
@@ -1702,7 +1896,8 @@ void webui_init() {
     // den Treiber/die Queues an, sendet aber noch nichts sichtbares - das
     // eigentliche Einschalten des Access Points (SSID sichtbar) macht weiterhin
     // ausschliesslich webui_enableAP().
-    WiFi.mode(WIFI_AP);
+    // v5.01: mit Funk AP + STA (ESP-NOW laeuft ueber die STA-Seite)
+    WiFi.mode(funk.active() ? WIFI_AP_STA : WIFI_AP);
 
     // NEU v2.02: WLAN dauerhaft an (g_wifi_always_on) uebersteuert den
     // GPIO13-Bootpin vollstaendig - siehe Kommentar bei g_wifi_always_on
@@ -1732,6 +1927,8 @@ void webui_init() {
     webCommonRegister(webServer, storageSave);
     // v4.06: Einstellungs-Backups im Flash (/api/backup/*, RC_Common)
     cfgBackupRegister(webServer);
+    // v5.01: /api/funk, /api/funk/reset (RC_Common funk_link)
+    funk.registerWeb(webServer);
     // WebServer.begin() bewusst unabhaengig vom AP-Status: der Server lauscht
     // so schon, sobald der AP spaeter per Auto-Failsafe/manuell aktiviert wird
     // (kein erneutes .begin() noetig).

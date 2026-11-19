@@ -6,6 +6,14 @@ Hardware und Grundlage der Firmware stammen von Der RC-Modellbauer (Ziege-One), 
 
 ## RC_Multiswitch (Basis und TXRX, ab v5.00)
 
+### v5.01 (RC_Common 1.5.0)
+- Neu: **Funk** (ESP-NOW, aus der Funk-Brücke v0.1.9). Module ohne Kabel zum Empfänger bekommen CRSF per Funk. RC-System 5 = „CRSF + Funk senden (Zentrale)“: das Modul am Empfänger funkt alles vom Kabel weiter. RC-System 6 = „CRSF aus Funk (Teilnehmer)“: Kanäle, Lua und Telemetrie laufen über Funk, UART A bleibt frei. Auf Basis/TXRX wie auf C3/S3. Pro Fahrzeug eine Zentrale und bis zu 8 Teilnehmer, eine Funk-Brücke kann an jeder Seite stehen. Noch nicht auf Hardware getestet.
+- Einstellungen: Fahrzeug-Kennung (1–255), Funkkanal (1–13), Sendeleistung (2–20 dBm, Vorgabe 20), bei der Zentrale „Kanäle alle“ (Vorgabe 10 ms), beim Teilnehmer „Rückkanal“ (Lua/Telemetrie, Vorgabe an). Web-UI Reiter RC-System, Karte „Funk“, oder Lua-Ordner „Funk“ (Felder 88–95). Wirken nach Neustart. NVS `fkid fkch fkpwr fkrate fkback`.
+- Web-UI: neuer Reiter „Funk“ mit Ampel, Gegenstellen (Rolle, CRSF-Adresse, Pakete/s, Verlust, RSSI, Aussetzer) und Zählern, Zeile in der Übersicht. `/api/funk`, `/api/funk/reset`.
+- Failsafe wie bei abgezogenem Kabel: ohne Funk-Daten nach 2 s alle Ausgänge aus.
+- Zweite Zentrale mit derselben Kennung: gelber Doppelblitz. Gegenstelle mit derselben CRSF-Adresse: blauer Doppelblitz.
+- Mit Funk läuft das WLAN auf dem Funkkanal (ein Funkteil für beides).
+
 ### v5.00 (RC_Common 1.4.0)
 - Eine Firmware für alle Multiswitch-Platinen (Basis, TXRX, C3, S3), ersetzt `MultiSwitch_ESP32_V3/` und `MultiSwitch_ESP32_TXRX/`. Grundlage ist RC-Multiswitch v4.11 (abgezweigt von V3 v3.12).
 - Platine Basis oder TXRX wählbar: Web-UI Reiter RC-System, Karte „Platine“, oder Lua Global > „Platine (Neustart)“ (Feld 87). Vorgabe Basis, wirkt nach Neustart.
