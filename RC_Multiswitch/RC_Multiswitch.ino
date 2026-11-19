@@ -70,7 +70,7 @@
 #include "src/RC_Common/config_backup.h"   // v4.06
 #include "src/RC_Common/funk_link.h"       // v5.01
 
-constexpr uint16_t Version = 501; // 5.01 - CRSF Parameter Version Number
+constexpr uint16_t Version = 504; // 5.04 - CRSF Parameter Version Number
 // v5.01: Funk (ESP-NOW, RC_Common 1.5.0): RC-System 5 = Zentrale, 6 = Teilnehmer.
 // v5.00: eine Firmware fuer C3, S3 und klassischen ESP32 (Platine Basis/TXRX,
 //        Auswahl zur Laufzeit, NVS "board", Lua Global > Platine (Neustart)).
@@ -154,6 +154,12 @@ CRSF crsf;
 // (Router-Port D). RC_System 6: Teilnehmer, CRSF kommt nur aus dem Funk.
 FunkLink   funk;
 FunkConfig g_funk;   // NVS fkid/fkch/fkpwr/fkrate/fkback
+uint32_t   g_devInfoSent = 0;   // v5.02: gesendete DEVICE_INFO-Antworten (Debug)
+uint32_t   g_wmCmdCount = 0;    // v5.04: empfangene CRSF-Kommandos (0x32), Debug
+uint8_t    g_wmLast[8]  = {0};  // v5.04: letztes Kommando Byte 3..10 (Ziel, Quelle, Code, Befehl, Adresse, Daten)
+bool       g_wmLastHit  = false;// v5.04: letztes Kommando hat dieses Modul getroffen
+// v5.02: neue Modul-Adresse sofort fuer CRSF und Funk uebernehmen (Web-UI)
+void applyModulAddress();
 static inline bool rcIsCrsf(int rc) { return rc >= 4 && rc <= 6; }
 
 uint16_t channel_output[16] = {};
@@ -522,7 +528,18 @@ static void updateGroupFromAddress(uint8_t addr, uint8_t bits) {
 static void einkanalFunctionCRSF() {
     uint8_t WMcode  = crsf.get_cmd_buffer(5);
     uint8_t command = crsf.get_cmd_buffer(6);
+    // v5.04: letztes Kommando fuer den Debug-Reiter merken (was schickt das Widget?)
+    g_wmCmdCount++;
+    for (uint8_t i = 0; i < 8; i++) g_wmLast[i] = crsf.get_cmd_buffer(3 + i);
+    g_wmLastHit = false;
     if (WMcode != Multiswitch) return;
+    if (command == MWset4m) {
+        uint8_t count = min((uint8_t)crsf.get_cmd_buffer(7), (uint8_t)7);
+        for (uint8_t i = 0; i < count; i++)
+            if (crsf.get_cmd_buffer(8 + (3 * i)) == (uint8_t)modul_adress) g_wmLastHit = true;
+    } else {
+        g_wmLastHit = (crsf.get_cmd_buffer(7) == (uint8_t)modul_adress);
+    }
     switch (command) {
         case MWset4: {
             uint8_t address = crsf.get_cmd_buffer(7);
@@ -773,7 +790,8 @@ static LuaMenu luaMenu(luaItems, 100);
 static char    luaOutName[8][12];   // "Ausgang 1".."Ausgang 8"
 
 static uint8_t luaGetAddr(uint8_t)              { return (uint8_t)modul_adress; }
-static void    luaSetAddr(uint8_t, uint8_t v)   { modul_adress = v; crsf.setDeviceAddress(crsfAddrFromWM()); funk.setCrsfAddr(crsfAddrFromWM()); nvsSave(); }
+void applyModulAddress() { crsf.setDeviceAddress(crsfAddrFromWM()); funk.setCrsfAddr(crsfAddrFromWM()); }
+static void    luaSetAddr(uint8_t, uint8_t v)   { modul_adress = v; applyModulAddress(); nvsSave(); }
 static uint8_t luaGetCrsfCh(uint8_t)            { return (uint8_t)CRSF_Channel; }
 static void    luaSetCrsfCh(uint8_t, uint8_t v) { CRSF_Channel = v; nvsSave(); }
 
@@ -1271,6 +1289,7 @@ void loop() {
             // eine geaenderte Parameterstruktur zuverlaessig und lesen
             // sie neu ein.
             crsf.send_device_info(devName, luaMenu.maxId(), (uint8_t)(Version & 0xFF));
+            g_devInfoSent++;   // v5.02: Debug-Zaehler
         }
         // ELRS LUA Script: Parameter lesen
         if (crsf.getDeviceReadReplyPending()) {

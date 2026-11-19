@@ -6,7 +6,19 @@ Hardware und Grundlage der Firmware stammen von Der RC-Modellbauer (Ziege-One), 
 
 ## RC_Multiswitch (Basis und TXRX, ab v5.00)
 
-### v5.01 (RC_Common 1.5.0)
+### v5.04 (RC_Common 1.5.2)
+- Hardware-Test 19.11.2026 bestanden: Multiswitch S3 als Funk-Teilnehmer mit ESP32_ESP-NOW_CRSF-Link v0.2.1 am Empfänger. Kanäle, Lua-Menü und WM-Widget bei jeder Modul-Adresse laufen über Funk.
+- Diagnose WM-Adresse: Reiter „Debug“ zeigt „WM-Befehle empfangen“ und den letzten Befehl (Ziel, Quelle, Code, Befehl, Adresse im Befehl, eigene Adresse, übernommen ja/nein). Damit ist sichtbar, welche Adresse das Widget wirklich schickt. Schaltverhalten unverändert.
+
+### v5.03 (RC_Common 1.5.2)
+- Fix: WM-Befehle vom Widget schalten wieder bei jeder Modul-Adresse. Seit v4.00 wurden CRSF-Kommandos nur angenommen, wenn sie an die eigene CRSF-Adresse (0xC0 + Modul-Adresse) gingen; das Widget schickt an eine feste Zieladresse, deshalb ging nur Adresse 0. Jetzt wie in der Ziege-One-Firmware: jedes Kommando wird angenommen, gefiltert nach WM-Code und Modul-Adresse im Befehl.
+- Hardware-Test Funk-Teilnehmer mit ESP32_ESP-NOW_CRSF-Link am Empfänger: Kanäle, WM und Lua-Antworten laufen über Funk (fehlendes Lua lag an einem Wackelkontakt der Link-Ader zum Empfänger).
+
+## v5.02 (RC_Common 1.5.1)
+- Fehlersuche Funk-Teilnehmer: Lua-Menü erscheint nicht, obwohl Pings ankommen. Reiter „Funk“ zeigt jetzt Gesamtzähler (Antworten in den Funk, gesendet, geschriebene Bytes, verworfen ohne Gegenstelle / Rückkanal aus / Rahmenfehler), Reiter „Debug“ zusätzlich „DEVICE_INFO gesendet“.
+- Fix: Eine in der Web-UI geänderte Modul-Adresse gilt sofort auch als CRSF-Geräteadresse (Lua, WM-Befehle an 0xC0 + Adresse) und im Funk-Ping. Vorher erst nach einem Neustart, über Lua ging es schon sofort.
+
+## v5.01 (RC_Common 1.5.0)
 - Neu: **Funk** (ESP-NOW, aus der Funk-Brücke v0.1.9). Module ohne Kabel zum Empfänger bekommen CRSF per Funk. RC-System 5 = „CRSF + Funk senden (Zentrale)“: das Modul am Empfänger funkt alles vom Kabel weiter. RC-System 6 = „CRSF aus Funk (Teilnehmer)“: Kanäle, Lua und Telemetrie laufen über Funk, UART A bleibt frei. Auf Basis/TXRX wie auf C3/S3. Pro Fahrzeug eine Zentrale und bis zu 8 Teilnehmer, eine Funk-Brücke kann an jeder Seite stehen. Noch nicht auf Hardware getestet.
 - Einstellungen: Fahrzeug-Kennung (1–255), Funkkanal (1–13), Sendeleistung (2–20 dBm, Vorgabe 20), bei der Zentrale „Kanäle alle“ (Vorgabe 10 ms), beim Teilnehmer „Rückkanal“ (Lua/Telemetrie, Vorgabe an). Web-UI Reiter RC-System, Karte „Funk“, oder Lua-Ordner „Funk“ (Felder 88–95). Wirken nach Neustart. NVS `fkid fkch fkpwr fkrate fkback`.
 - Web-UI: neuer Reiter „Funk“ mit Ampel, Gegenstellen (Rolle, CRSF-Adresse, Pakete/s, Verlust, RSSI, Aussetzer) und Zählern, Zeile in der Übersicht. `/api/funk`, `/api/funk/reset`.

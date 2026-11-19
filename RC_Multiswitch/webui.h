@@ -23,6 +23,11 @@ extern int           RC_System_boot;
 extern int           CRSF_Channel;
 extern int           einkanal_mode;
 extern int           modul_adress;
+extern uint32_t      g_devInfoSent;   // v5.02
+extern uint32_t      g_wmCmdCount;    // v5.04
+extern uint8_t       g_wmLast[8];     // v5.04
+extern bool          g_wmLastHit;     // v5.04
+void applyModulAddress();             // v5.02
 extern int           Ausgang_Kanal[8];
 extern int           pwm_wert[8];
 extern int           mode[8];
@@ -942,7 +947,9 @@ async function fetchFunk(){
       [o.sent,'Pakete gesendet'],[o.noack,'nicht zugestellt'],[o.qfull,'Warteschlange voll']]
     :[[o.ch_funk,'Kanäle aus Funk'],[o.frames_in,'Frames aus Funk'],[o.frames_out,'Antworten in den Funk'],
       [o.sent,'Pakete gesendet'],[o.noack,'nicht zugestellt'],[o.qfull,'Warteschlange voll']];
-  $('f-own').innerHTML=tiles.map(t=>`<div><b>${t[0]}</b><span>${t[1]}</span></div>`).join('');
+  $('f-own').innerHTML=tiles.map(t=>`<div><b>${t[0]}</b><span>${t[1]}</span></div>`).join('')
+    // v5.02: Gesamtzaehler fuer die Fehlersuche
+    +(f.total?`<div style="grid-column:1/-1;font-size:12px;color:var(--sub)">Gesamt: ${Z?'Frames in den Funk':'Antworten in den Funk'} ${f.total.frames_out} · gesendet ${f.total.sent} · aus Funk ${f.total.frames_in} · Bytes geschrieben ${f.total.wr_bytes} · verworfen: ohne Gegenstelle ${f.total.no_peer}, Rückkanal aus ${f.total.back_drop}, Rahmenfehler ${f.total.wr_resync} · Sendefehler ${o.senderr}</div>`:'');
   $('f-peers-title').textContent='Gegenstellen ('+f.peers.length+')';
   $('f-peers').innerHTML=f.peers.length?f.peers.map(p=>{
     const a=funkAmp(p.loss,p.rssi,p.alive);
@@ -1313,6 +1320,10 @@ async function pollDebug(){
     ch+=`DEVICE_PING empfangen: ${c.device_pings}<br>`;
     ch+=`PARAMETER_READ empfangen: ${c.param_reads}<br>`;
     ch+=`PARAMETER_WRITE empfangen: ${c.param_writes}<br>`;
+    if(c.devinfo_sent!==undefined)ch+=`DEVICE_INFO gesendet: ${c.devinfo_sent}<br>`;
+    if(c.wm_cmds!==undefined){const w=c.wm_last,h=v=>'0x'+v.toString(16).toUpperCase().padStart(2,'0');
+      ch+=`WM-Befehle empfangen: ${c.wm_cmds}<br>`;
+      if(c.wm_cmds)ch+=`Letzter: Ziel ${h(w[0])}, Quelle ${h(w[1])}, Code ${h(w[2])}, Befehl ${h(w[3])}, Adresse im Befehl ${w[4]} (eigene ${c.wm_own}) &rarr; ${c.wm_hit?'<b>übernommen</b>':'nicht für dieses Modul'}<br>`;}
     if(c.fwd_down!==undefined){
       ch+=`Router A&rarr;B/C: ${c.fwd_down}, B/C&rarr;A: ${c.fwd_up}, verworfen: ${c.fwd_dropped}, CRC-Fehler B/C: ${c.down_crc}<br>`;
       if(c.dup_addr) ch+=`<b style="color:#c00">Doppelte Modul-Adresse in der Kette erkannt!</b><br>`;
@@ -1450,6 +1461,14 @@ static void handleStatus() {
     j += "\"device_pings\":" + String(crsf.getDevicePings()) + ",";
     j += "\"param_reads\":"  + String(crsf.getParamReads())  + ",";
     j += "\"param_writes\":" + String(crsf.getParamWrites()) + ",";
+    j += "\"devinfo_sent\":" + String(g_devInfoSent) + ",";   // v5.02
+    {   // v5.04: letztes WM-/CRSF-Kommando
+        char wb[96];
+        snprintf(wb, sizeof(wb), "\"wm_cmds\":%lu,\"wm_hit\":%s,\"wm_own\":%d,\"wm_last\":[%u,%u,%u,%u,%u,%u,%u,%u],",
+                 (unsigned long)g_wmCmdCount, g_wmLastHit ? "true" : "false", modul_adress,
+                 g_wmLast[0], g_wmLast[1], g_wmLast[2], g_wmLast[3], g_wmLast[4], g_wmLast[5], g_wmLast[6], g_wmLast[7]);
+        j += wb;
+    }
     // v4.01: Router-Zaehler
     j += "\"fwd_down\":"    + String(crsf.getFwdDown())    + ",";
     j += "\"fwd_up\":"      + String(crsf.getFwdUp())      + ",";
@@ -1587,7 +1606,7 @@ static void handleConfig() {
     }
     if (webJsonInt(body, "modul_adress", v)) {
       v = constrain(v, 0, 20);
-      if (v != modul_adress) { modul_adress = v; changed = true; }
+      if (v != modul_adress) { modul_adress = v; applyModulAddress(); changed = true; }   // v5.02: sofort
     }
     // NEU V3.00: MKan-Gruppen (CRSF-Adresse bzw. SBUS-Kanal/-Modus je Gruppe)
     if (webJsonInt(body, "ek_gadr0", v)) {
