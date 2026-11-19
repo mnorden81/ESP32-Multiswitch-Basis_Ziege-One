@@ -929,6 +929,9 @@ static void wifiFailsafeCheck() {
 // erst ausgewertet, nachdem er nach dem Booten einmal losgelassen war.
 static constexpr unsigned long BOOT_LONG_PRESS_MS = 2000;   // v4.10: 2 s wie beim Router
 static void bootButtonCheck() {
+#if defined(WIFI_BOOT_PIN)
+    return;   // v5.00: Basis/TXRX ohne BOOT-Taster (D1 Mini hat nur Reset)
+#else
     static bool          armed   = false;
     static bool          pressed = false;
     static bool          fired   = false;
@@ -948,6 +951,7 @@ static void bootButtonCheck() {
         Serial.println("BOOT-Taster: WLAN-AP ein");
         webui_enableAP();
     }
+#endif
 }
 
 // ======== PWM-Duty aus einem PWM-Wert ermitteln (NEU v0.14) ======
@@ -1119,9 +1123,10 @@ void setup() {
 #else
     statusLed.begin(STATUS_LED_PIN, false);
 #endif
-    pinMode(BOOT_BTN_PIN, INPUT_PULLUP);   // v4.01: BOOT-Taster fuer den WLAN-AP
 #if defined(WIFI_BOOT_PIN)
-    pinMode(WIFI_BOOT_PIN, INPUT_PULLUP);  // v5.00: Basis/TXRX, GND beim Start = AP an
+    pinMode(WIFI_BOOT_PIN, INPUT_PULLUP);  // v5.00: Basis/TXRX, GND beim Start = AP an (kein BOOT-Taster)
+#else
+    pinMode(BOOT_BTN_PIN, INPUT_PULLUP);   // v4.01: BOOT-Taster fuer den WLAN-AP
 #endif
 
     webui_init();

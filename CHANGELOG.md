@@ -10,8 +10,8 @@ Hardware und Grundlage der Firmware stammen von Der RC-Modellbauer (Ziege-One), 
 - Eine Firmware für alle Multiswitch-Platinen (Basis, TXRX, C3, S3), ersetzt `MultiSwitch_ESP32_V3/` und `MultiSwitch_ESP32_TXRX/`. Grundlage ist RC-Multiswitch v4.11 (abgezweigt von V3 v3.12).
 - Platine Basis oder TXRX wählbar: Web-UI Reiter RC-System, Karte „Platine“, oder Lua Global > „Platine (Neustart)“ (Feld 87). Vorgabe Basis, wirkt nach Neustart.
 - Gespeicherte Einstellungen aus v3.17 bleiben erhalten (NVS `msw`). TXRX-Platine: nach dem Update einmal „TXRX“ wählen und neu starten.
-- Neu gegenüber v3.17 (aus v4.00–v4.11): BOOT-Taster 2 s = WLAN ein/aus, Status-LED mit dem Farbschema aller Module (hier einfarbig an GPIO2), neues Lua-Menü (Ordner mit Wert, Felder ohne Wirkung ausgeblendet), RC_Common 1.4.0, Werkseinstellung RC-System CRSF bei neuen Modulen.
-- Wie bisher: CRSF/SBUS an GPIO16/17, GPIO13 beim Start auf GND = WLAN an.
+- Neu gegenüber v3.17 (aus v4.00–v4.11): Status-LED mit dem Farbschema aller Module (hier einfarbig an GPIO2), neues Lua-Menü (Ordner mit Wert, Felder ohne Wirkung ausgeblendet), RC_Common 1.4.0, Werkseinstellung RC-System CRSF bei neuen Modulen.
+- Wie bisher: CRSF/SBUS an GPIO16/17, GPIO13 beim Start auf GND = WLAN an. Kein BOOT-Taster (D1 Mini hat nur Reset) und keine UART B/C (keine freien Pins).
 - Projektbeschreibungen V3/TXRX v3.12 nach `docs/` verschoben.
 
 ## V3 und TXRX (bis v3.17, Ordner entfernt)

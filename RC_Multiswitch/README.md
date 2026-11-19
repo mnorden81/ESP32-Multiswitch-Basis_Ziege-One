@@ -35,7 +35,7 @@ Board **ESP32 Dev Module**, Partition Scheme **Default 4MB with spiffs**. Datei 
 | Ausgang 8 | 27 | 33 |
 | Status-LED | GPIO 2 | GPIO 2 |
 | WLAN beim Start | GPIO 13 auf GND | GPIO 13 auf GND |
-| BOOT-Taster (2 s = WLAN ein/aus) | GPIO 0 | GPIO 0 |
+| BOOT-Taster | keiner (nur Reset) | keiner (nur Reset) |
 
 - UART B/C (Modulkette, S.Port, GPS) sind auf diesen Platinen nicht herausgeführt und in Web-UI und Lua ausgeblendet.
 - TXRX: GPIO 5 (Ausgang 3) ist ein Strapping-Pin, beim ersten Einschalten prüfen, ob das Modul sicher startet. Auf J4 liegen Ausgang 5–8 nicht in Reihenfolge: O5 → Pin 13, O6 → 11, O7 → 9, O8 → 15 (ungerade Pins = Ausgang, gerade = GND).

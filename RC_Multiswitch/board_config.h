@@ -47,6 +47,7 @@
 //   bei C3/S3 nur eine), BOARD_OUT_PINS[Variante][8], OutPwm[8],
 //   BOARD_LED_TEXT/BOARD_WIFI_TEXT (Anzeige im Web), UART A/B/C, BOOT-Taster,
 //   Status-LED, optional WIFI_BOOT_PIN (LOW beim Start = WLAN-AP an).
+//   BOOT_BTN_PIN nur, wo es einen BOOT-Taster gibt (C3/S3).
 #if defined(BOARD_C3)
   #define BOARD_CHIP "ESP32-C3"
   static constexpr uint8_t BOARD_VARIANT_COUNT = 1;
@@ -125,7 +126,7 @@
   static constexpr uint8_t UART_A_TX = 17;
   // UART B/C: auf Basis/TXRX nicht herausgefuehrt
 
-  static constexpr uint8_t BOOT_BTN_PIN = 0;
+  // Kein BOOT-Taster (D1 Mini hat nur Reset), WLAN ueber GPIO13 oder Web/Lua
   // GPIO13 beim Start auf GND = WLAN-AP an (wie bis v3.17)
   #define WIFI_BOOT_PIN 13
   // einfache LED an GPIO2 (wie bis v3.17)
@@ -133,7 +134,7 @@
   #define STATUS_LED_WS2812 0
   #define STATUS_LED_RGB_DEFAULT false
   #define BOARD_LED_TEXT  "GPIO 2"
-  #define BOARD_WIFI_TEXT "GPIO 13 beim Start auf GND, BOOT-Taster 2 s oder Dauerhaft an"
+  #define BOARD_WIFI_TEXT "GPIO 13 beim Start auf GND oder Dauerhaft an"
 #endif
 
 #ifndef BOARD_SELECTABLE
