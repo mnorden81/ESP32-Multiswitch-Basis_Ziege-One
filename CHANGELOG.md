@@ -7,6 +7,7 @@ Hardware und Grundlage der Firmware stammen von Der RC-Modellbauer (Ziege-One), 
 ## RC_Multiswitch (Basis und TXRX, ab v5.00)
 
 ### v5.04 (RC_Common 1.5.2)
+- Hardware-Test 19.11.2026 bestanden: Multiswitch S3 als Funk-Teilnehmer mit ESP32_ESP-NOW_CRSF-Link v0.2.1 am Empfänger. Kanäle, Lua-Menü und WM-Widget bei jeder Modul-Adresse laufen über Funk.
 - Diagnose WM-Adresse: Reiter „Debug“ zeigt „WM-Befehle empfangen“ und den letzten Befehl (Ziel, Quelle, Code, Befehl, Adresse im Befehl, eigene Adresse, übernommen ja/nein). Damit ist sichtbar, welche Adresse das Widget wirklich schickt. Schaltverhalten unverändert.
 
 ### v5.03 (RC_Common 1.5.2)
