@@ -24,6 +24,9 @@ extern int           CRSF_Channel;
 extern int           einkanal_mode;
 extern int           modul_adress;
 extern uint32_t      g_devInfoSent;   // v5.02
+extern uint32_t      g_wmCmdCount;    // v5.04
+extern uint8_t       g_wmLast[8];     // v5.04
+extern bool          g_wmLastHit;     // v5.04
 void applyModulAddress();             // v5.02
 extern int           Ausgang_Kanal[8];
 extern int           pwm_wert[8];
@@ -1318,6 +1321,9 @@ async function pollDebug(){
     ch+=`PARAMETER_READ empfangen: ${c.param_reads}<br>`;
     ch+=`PARAMETER_WRITE empfangen: ${c.param_writes}<br>`;
     if(c.devinfo_sent!==undefined)ch+=`DEVICE_INFO gesendet: ${c.devinfo_sent}<br>`;
+    if(c.wm_cmds!==undefined){const w=c.wm_last,h=v=>'0x'+v.toString(16).toUpperCase().padStart(2,'0');
+      ch+=`WM-Befehle empfangen: ${c.wm_cmds}<br>`;
+      if(c.wm_cmds)ch+=`Letzter: Ziel ${h(w[0])}, Quelle ${h(w[1])}, Code ${h(w[2])}, Befehl ${h(w[3])}, Adresse im Befehl ${w[4]} (eigene ${c.wm_own}) &rarr; ${c.wm_hit?'<b>übernommen</b>':'nicht für dieses Modul'}<br>`;}
     if(c.fwd_down!==undefined){
       ch+=`Router A&rarr;B/C: ${c.fwd_down}, B/C&rarr;A: ${c.fwd_up}, verworfen: ${c.fwd_dropped}, CRC-Fehler B/C: ${c.down_crc}<br>`;
       if(c.dup_addr) ch+=`<b style="color:#c00">Doppelte Modul-Adresse in der Kette erkannt!</b><br>`;
@@ -1456,6 +1462,13 @@ static void handleStatus() {
     j += "\"param_reads\":"  + String(crsf.getParamReads())  + ",";
     j += "\"param_writes\":" + String(crsf.getParamWrites()) + ",";
     j += "\"devinfo_sent\":" + String(g_devInfoSent) + ",";   // v5.02
+    {   // v5.04: letztes WM-/CRSF-Kommando
+        char wb[96];
+        snprintf(wb, sizeof(wb), "\"wm_cmds\":%lu,\"wm_hit\":%s,\"wm_own\":%d,\"wm_last\":[%u,%u,%u,%u,%u,%u,%u,%u],",
+                 (unsigned long)g_wmCmdCount, g_wmLastHit ? "true" : "false", modul_adress,
+                 g_wmLast[0], g_wmLast[1], g_wmLast[2], g_wmLast[3], g_wmLast[4], g_wmLast[5], g_wmLast[6], g_wmLast[7]);
+        j += wb;
+    }
     // v4.01: Router-Zaehler
     j += "\"fwd_down\":"    + String(crsf.getFwdDown())    + ",";
     j += "\"fwd_up\":"      + String(crsf.getFwdUp())      + ",";
