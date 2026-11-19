@@ -1,9 +1,9 @@
 /*
- * webui.h  –  WiFi-Weboberfläche für ESP32-MultiSwitch V3
- * MKan-Gruppen und Konfig 2/3 je Ausgang (siehe evalSlotActive()/Output()
- * in MultiSwitch_ESP32_V3.ino) sind nur hier in der Web-UI einstellbar,
- * nicht im Lua-Menü. OTA-Upload, JSON-Helfer und /rc_common.js kommen aus
- * RC_Common. Versionsgeschichte: siehe CHANGELOG.md.
+ * webui.h  –  WiFi-Weboberfläche für RC-Multiswitch C3/S3/ESP32 (Basis, TXRX)
+ * Konfig 2/3 je Ausgang und die MKan-Gruppen sind nur hier in der Web-UI
+ * einstellbar, nicht im Lua-Menü. g_port_role[], g_port_baud[] und
+ * g_ports[] stehen in RC_Multiswitch.ino vor dem Include dieser Datei.
+ * Versionsgeschichte: siehe CHANGELOG.md.
  */
 
 #pragma once
@@ -40,7 +40,10 @@ extern uint16_t      channel_output[16];
 extern uint16_t      einkanal_Data;
 extern bool          BUS_OK;
 extern bool          Ausgang[8];
-extern const uint8_t OutPin[8];
+extern uint8_t       OutPin[8];            // v5.00: aus BOARD_OUT_PINS der Platine
+extern uint8_t       g_board;              // v5.00: gewaehlte Platine (NVS "board")
+extern uint8_t       g_board_boot;         // v5.00: beim Start aktive Platine
+extern const char*   boardName();
 extern char          g_wifi_ssid[33];
 extern char          g_wifi_pass[64];
 extern char          g_wifi_ip[16];
@@ -206,6 +209,19 @@ main{max-width:560px;margin:0 auto;padding:20px 14px 60px}
 
   <!-- RC -->
   <div id="tab-rc" style="display:none">
+    <!-- NEU v5.00: Platine (nur klassischer ESP32: Basis D1 Mini oder TXRX) -->
+    <div class="card">
+      <div class="card-title">Platine</div>
+      <div class="row" id="row-board"><label>Platine</label>
+        <select id="sel-board" onchange="onBoardChange()">
+          <option value="0">Basis (D1 Mini, Ausg&auml;nge GPIO 18&ndash;27)</option>
+          <option value="1">TXRX (ULN2803A / TBD62083)</option>
+        </select>
+      </div>
+      <div class="mono" id="board-pins" style="font-size:12px;line-height:1.7;margin-top:4px"></div>
+      <span style="color:var(--sub);font-size:12px;display:block;margin-top:6px" id="board-help"></span>
+      <span style="font-size:12px;display:block;margin-top:6px" id="board-hint"></span>
+    </div>
     <div class="card">
       <div class="card-title">RC-System</div>
 
@@ -365,6 +381,29 @@ main{max-width:560px;margin:0 auto;padding:20px 14px 60px}
       </div>
       <span style="color:var(--sub);font-size:12px;display:block;margin-top:6px">Zusaetzlich zur Einzelkanal-Adresse oben: bis zu 16 weitere, unabhaengige Trigger-Bits fuer die Ausgangs-Kanalquelle "MKan1"/"MKan2".</span>
     </div>
+
+    <!-- UART B/C (NEU v4.04): Rolle je Zusatz-UART, wie beim Soundmodul -->
+    <div class="card">
+      <div class="card-title">UART B/C</div>
+      <div id="portb-none" style="display:none;color:var(--sub);font-size:13px">Auf dieser Platine sind keine Pins f&uuml;r UART B/C herausgef&uuml;hrt.</div>
+      <div id="port-rows">
+      <div class="row"><label>UART B</label>
+        <select id="sel-portb" onchange="onPortChange()"></select>
+      </div>
+      <div class="row" id="row-portc"><label>UART C</label>
+        <select id="sel-portc" onchange="onPortChange()"></select>
+      </div>
+      <div class="row"><label>UART B Baud</label>
+        <select id="sel-portb-baud" onchange="onPortChange()"></select>
+      </div>
+      <div class="row" id="row-portc-baud"><label>UART C Baud</label>
+        <select id="sel-portc-baud" onchange="onPortChange()"></select>
+      </div>
+      <span style="color:var(--yellow);font-size:12px;display:none;margin-top:6px" id="portc-dup">UART C ist aus: S.Port, GPS und Raw laufen nur auf einem Port.</span>
+      <span style="color:var(--sub);font-size:12px;display:block;margin-top:6px">CRSF = Modulkette zum naechsten Modul. S.Port = FrSky LiPo-Sensoren (FLVSS/MLVSS), GPS = NMEA-Empfaenger, Raw = UART offen ohne Auswertung. Beim Wechsel der Rolle wird die passende Baudrate vorgeschlagen. Bei CRSF gehen Zellspannungen und GPS als Telemetrie an den Sender. Wirkt nach einem Neustart.</span>
+      <span style="font-size:12px;display:block;margin-top:6px" id="port-hint"></span>
+      </div>
+    </div>
   </div>
 
   <!-- WiFi -->
@@ -388,7 +427,7 @@ main{max-width:560px;margin:0 auto;padding:20px 14px 60px}
           <option value="1">Ein</option>
         </select>
       </div>
-      <span style="color:var(--sub);font-size:12px;display:block">Schaltet den Access Point beim Booten immer ein und nie wieder aus - unabh&auml;ngig vom Bootpin (GPIO13) und vom Auto-Failsafe unten. Wirkt erst nach dem n&auml;chsten Neustart. Default AN.</span>
+      <span style="color:var(--sub);font-size:12px;display:block">Schaltet den Access Point beim Booten immer ein und nie wieder aus - unabh&auml;ngig vom Auto-Failsafe unten. Wirkt erst nach dem n&auml;chsten Neustart. Default AN.</span>
     </div>
     <div class="card">
       <div class="card-title">WLAN jetzt (NEU v2.00)</div>
@@ -430,7 +469,7 @@ main{max-width:560px;margin:0 auto;padding:20px 14px 60px}
         </div>
       </div>
       <div id="fb-status" style="font-size:12px;margin-bottom:6px"></div>
-      <span style="color:var(--sub);font-size:12px;display:block">v3.15: Sichert dieselben Daten im Flash des Moduls &ndash; ohne PC oder Handy-Datei. Es bleiben die letzten 5 eigenen Sicherungen und 3 automatische (vor jedem Import und Firmware-Update). &Uuml;bersteht Flashen und OTA, nicht aber &bdquo;Erase All Flash&ldquo; oder ein anderes Partitionsschema &ndash; f&uuml;r den Ernstfall zus&auml;tzlich als Datei exportieren.</span>
+      <span style="color:var(--sub);font-size:12px;display:block">v4.06: Sichert dieselben Daten im Flash des Moduls &ndash; ohne PC oder Handy-Datei. Es bleiben die letzten 5 eigenen Sicherungen und 3 automatische (vor jedem Import und Firmware-Update). &Uuml;bersteht Flashen und OTA, nicht aber &bdquo;Erase All Flash&ldquo; oder ein anderes Partitionsschema &ndash; f&uuml;r den Ernstfall zus&auml;tzlich als Datei exportieren.</span>
     </div>
     <div class="card" id="c-ota">
       <div class="card-title">Firmware-Update (OTA, NEU v2.00)</div>
@@ -455,6 +494,10 @@ main{max-width:560px;margin:0 auto;padding:20px 14px 60px}
     <div class="card">
       <div class="card-title">CRSF-Diagnose (NEU v2.00)</div>
       <div id="crsf-diag-body" class="mono" style="line-height:1.8"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">UART B/C</div>
+      <div id="port-diag-body" class="mono" style="line-height:1.8"></div>
     </div>
     <div class="card">
       <div class="card-title">MWprop-Kanalwerte</div>
@@ -728,6 +771,25 @@ async function releaseAll(){
   fetchStatus();
 }
 
+// NEU v5.00: Platine. Chip (C3/S3/ESP32) erkennt die Firmware selbst,
+// beim klassischen ESP32 waehlt man hier Basis oder TXRX (wirkt nach Neustart).
+function showBoard(d){
+  $('row-board').style.display=d.board_select?'':'none';
+  if(d.board_select) $('sel-board').value=d.board;
+  const b=d.board_info||{};
+  $('board-pins').innerHTML=`Aktiv: <b>${b.name||'?'}</b> (${b.chip||''})<br>`+
+    `CRSF/SBUS: RX ${b.rx} / TX ${b.tx}<br>Ausg&auml;nge 1&ndash;8: GPIO ${(b.out||[]).join(', ')}<br>`+
+    `Status-LED: ${b.led}<br>WLAN beim Start: ${b.wifi}`;
+  $('board-help').textContent=d.board_select
+    ?'Der Chip wird automatisch erkannt. Basis und TXRX haben denselben Chip, deshalb hier wählen. Die Ausgangspins wechseln nach einem Neustart.'
+    :'Diese Platine erkennt die Firmware automatisch am Chip.';
+}
+async function onBoardChange(){
+  await api('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({board:parseInt($('sel-board').value)})});
+  $('board-hint').innerHTML='Gespeichert, wirkt nach Neustart. <a href="#" onclick="restartForPorts();return false">Jetzt neu starten</a>';
+}
+
 async function fetchConfig(){
   const d=await api('/api/config');
   if(!d)return;
@@ -754,6 +816,19 @@ async function fetchConfig(){
   $('inp-wifi-auto-to').value=d.wifi_auto_timeout;
   $('sel-wifi-always').value=d.wifi_always_on?1:0;
   updateWifiAlwaysOnHint();
+  // NEU v4.04: UART B/C
+  rcFillSelect($('sel-portb'),d.port_roles||RC_ROLES,d.portb_role);
+  rcFillSelect($('sel-portc'),d.port_roles||RC_ROLES,d.portc_role);
+  fillBaud($('sel-portb-baud'),d.portb_baud);
+  fillBaud($('sel-portc-baud'),d.portc_baud);
+  window._portRole=[d.portb_role,d.portc_role];
+  $('row-portc').style.display=d.has_portc?'':'none';
+  $('row-portc-baud').style.display=d.has_portc?'':'none';
+  $('portc-dup').style.display=d.portc_dup?'block':'none';
+  // NEU v5.00: Platine + UART B nur, wenn vorhanden
+  $('portb-none').style.display=d.has_portb===false?'block':'none';
+  $('port-rows').style.display=d.has_portb===false?'none':'';
+  showBoard(d);
   updateRcRows(d.rc_system, ek);
   window._rcBoot=parseInt(d.rc_system);
 }
@@ -821,6 +896,34 @@ async function onEkChange(){
 }
 
 // CRSF Modul-Adresse
+// v4.05: Baudraten-Auswahl (Liste aus /rc_common.js mit "Auto", eigener
+// Wert bleibt erhalten)
+function fillBaud(sel,cur){ rcFillBaud(sel,cur); }
+// NEU v4.04: Rolle UART B/C speichern, wirkt nach Neustart. v4.05: neue
+// Rolle schlaegt ihre Baudrate vor (Raw/Aus behalten die bisherige).
+async function onPortChange(){
+  const r=[parseInt($('sel-portb').value),parseInt($('sel-portc').value)];
+  [['sel-portb-baud',0],['sel-portc-baud',1]].forEach(([id,i])=>{
+    const b=rcRoleDefaultBaud(r[i]);
+    if(window._portRole&&r[i]!==window._portRole[i]&&b&&r[i]!==4) fillBaud($(id),b);
+  });
+  window._portRole=r;
+  await api('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({portb_role:r[0],portc_role:r[1],
+      portb_baud:parseInt($('sel-portb-baud').value),
+      portc_baud:parseInt($('sel-portc-baud').value)})});
+  const h=$('port-hint');
+  h.innerHTML='Gespeichert, wirkt nach Neustart. <a href="#" onclick="restartForPorts();return false">Jetzt neu starten</a>';
+  h.style.color='var(--green)';
+}
+function restartForPorts(){
+  api('/api/restart',{method:'POST'});
+  let s=5; const h=$('port-hint'); h.style.color='var(--yellow)';
+  const t=setInterval(()=>{
+    h.textContent='Neustart… Verbinde in '+s+'s';
+    if(--s<0){clearInterval(t);window.location.reload();}
+  },1000);
+}
 async function onAdrChange(){
   await api('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({modul_adress:parseInt($('sel-adr').value)})});
@@ -892,7 +995,7 @@ function updateWifiAlwaysOnHint(){
 // und bietet das Ergebnis als Datei zum Download an - ganz normaler
 // Browser-Download, da der Webserver direkt auf dem Modul läuft. Kein SD-
 // Slot nötig/vorhanden - bewusst rein Browser-basiert.
-// v3.15: Konfiguration einsammeln, gemeinsam fuer Export als Datei und
+// v4.06: Konfiguration einsammeln, gemeinsam fuer Export als Datei und
 // Backup im Flash. null = Geraet nicht erreichbar.
 async function collectConfig(){
   const cfg=await api('/api/config');
@@ -945,7 +1048,7 @@ function importConfigFile(file){
   $('cfg-import-file').value='';
 }
 async function importConfigData(data){
-  // v3.15: bisherigen Stand vorher automatisch im Flash sichern
+  // v4.06: bisherigen Stand vorher automatisch im Flash sichern
   await rcBackupSnapshot(collectConfig);
   const s=data.settings||{};
   await api('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -953,7 +1056,9 @@ async function importConfigData(data){
       rc_system:s.rc_system, crsf_channel:s.crsf_channel, einkanal_mode:s.einkanal_mode,
       modul_adress:s.modul_adress, dnam:s.dnam, ssid:s.ssid, pass:s.pass, ip:s.ip,
       wifi_auto:s.wifi_auto, wifi_auto_timeout:s.wifi_auto_timeout,
-      wifi_always_on:s.wifi_always_on
+      wifi_always_on:s.wifi_always_on,
+      portb_role:s.portb_role, portc_role:s.portc_role,   // NEU v4.04
+      portb_baud:s.portb_baud, portc_baud:s.portc_baud    // v4.05
     })});
   for(const o of (data.outputs||[])){
     if(o.ch===undefined) continue;
@@ -973,13 +1078,13 @@ async function importConfigData(data){
 // das Modul selbst neu; die Antwort trifft trotzdem noch ein, bevor die
 // Verbindung tatsaechlich abbricht.
 function uploadOtaFile(file){
-  // v3.14: gemeinsamer Upload aus /rc_common.js
+  // v4.05: gemeinsamer Upload aus /rc_common.js
   rcOtaUpload(file,$('ota-status'),$('ota-file'),function(ok,err){
     if(!ok) alert('Update fehlgeschlagen ('+rcErrText(err)+').');
-  },()=>rcBackupSnapshot(collectConfig));   // v3.15: vorher Backup im Flash
+  },()=>rcBackupSnapshot(collectConfig));   // v4.06: vorher Backup im Flash
 }
 
-// ─── Backup im Flash des Moduls (v3.15, RC_Common config_backup) ───────
+// ─── Backup im Flash des Moduls (v4.06, RC_Common config_backup) ───────
 function fbStatus(t,err){ const e=$('fb-status'); e.textContent=t; e.style.color=err?'var(--red)':'var(--green)'; }
 async function flashBackupSave(){
   const data=await collectConfig();
@@ -1037,9 +1142,31 @@ async function pollDebug(){
     ch+=`DEVICE_PING empfangen: ${c.device_pings}<br>`;
     ch+=`PARAMETER_READ empfangen: ${c.param_reads}<br>`;
     ch+=`PARAMETER_WRITE empfangen: ${c.param_writes}<br>`;
+    if(c.fwd_down!==undefined){
+      ch+=`Router A&rarr;B/C: ${c.fwd_down}, B/C&rarr;A: ${c.fwd_up}, verworfen: ${c.fwd_dropped}, CRC-Fehler B/C: ${c.down_crc}<br>`;
+      if(c.dup_addr) ch+=`<b style="color:#c00">Doppelte Modul-Adresse in der Kette erkannt!</b><br>`;
+    }
     $('crsf-diag-body').innerHTML=ch;
   } else {
     $('crsf-diag-body').innerHTML='Keine Daten';
+  }
+
+  // NEU v4.04: UART B/C
+  if(d.ports){
+    const p=d.ports;
+    let ph2=`UART B: ${p.b}`+(p.has_c?` | UART C: ${p.c}`:'')+'<br>';
+    if(p.c_dup) ph2+='<b style="color:#c00">UART C aus: gleiche Rolle wie UART B</b><br>';
+    if(p.sport){
+      p.sport.forEach((s,i)=>{
+        ph2+=`LiPo ${i+1}: `+(s.online?`${s.cells}S, ${s.total.toFixed(2)} V, min. Zelle ${s.min.toFixed(2)} V`:'keine Antwort')+'<br>';
+      });
+      ph2+=`S.Port Polls: ${p.sport_polls}, Bytes: ${p.sport_bytes}, Frames: ${p.sport_frames}, CRC-Fehler: ${p.sport_crc}<br>`;
+    }
+    if(p.gps){
+      const g=p.gps;
+      ph2+=`GPS: ${g.fix?'Fix':'kein Fix'}, ${g.sats} Sat., ${g.kmh.toFixed(1)} km/h<br>`;
+    }
+    $('port-diag-body').innerHTML=ph2;
   }
 
   // MWprop
@@ -1067,11 +1194,20 @@ static void sendJson(const String& json) {
 static void sendOk()  { sendJson("{\"ok\":true}"); }
 static void send404() { webServer.send(404,"application/json","{\"error\":\"not found\"}"); }
 
-// v3.14: JSON-Helfer aus RC_Common (webJsonEscape/-Int/-Bool/-String)
+// v4.05: JSON-Helfer aus RC_Common (webJsonEscape/-Int/-Bool/-String)
 
 // ============================================================
 //  RC-System-Name
 // ============================================================
+// v4.05: Rolle und Baudrate eines UARTs fuer den Debug-Tab, GPS mit "Auto"
+static String portStateText(const UartPort& p) {
+  String t = uartRoleName(p.activeRole);
+  if (p.activeRole == UROLE_OFF) return t;
+  if (p.activeRole == UROLE_GPS && gpsBaudAuto())
+    return t + " Auto " + (gpsBaudLocked() ? String(gpsGetBaud()) : String("(sucht)"));
+  return t + " " + String(p.baud);
+}
+
 static const char* rcName(int sys) {
     switch(sys) {
         case 0: return "FrSky SBUS";
@@ -1089,7 +1225,7 @@ static const char* rcName(int sys) {
 static void handleStatus() {
     String j = "{";
     // Firmware-Version dynamisch aus Version-Konstante (z.B. 140 -> "v1.40")
-    j += "\"version\":\"v" + String(Version / 100) + "." + String(Version % 100 < 10 ? "0" : "") + String(Version % 100) + "\",";
+    j += "\"version\":\"v" + String(Version / 100) + "." + String(Version % 100 < 10 ? "0" : "") + String(Version % 100) + " " + String(boardName()) + "\",";   // v5.00: mit Platine
     j += "\"bus_ok\":" + String(BUS_OK ? "true" : "false") + ",";
     j += "\"rc_system\":" + String(RC_System_boot) + ",";
   j += "\"rc_system_name\":\"" + webJsonEscape(rcName(RC_System_boot)) + "\",";
@@ -1140,7 +1276,43 @@ static void handleStatus() {
     j += "\"crc_errors\":"   + String(crsf.getCrcErrors())   + ",";
     j += "\"device_pings\":" + String(crsf.getDevicePings()) + ",";
     j += "\"param_reads\":"  + String(crsf.getParamReads())  + ",";
-    j += "\"param_writes\":" + String(crsf.getParamWrites());
+    j += "\"param_writes\":" + String(crsf.getParamWrites()) + ",";
+    // v4.01: Router-Zaehler
+    j += "\"fwd_down\":"    + String(crsf.getFwdDown())    + ",";
+    j += "\"fwd_up\":"      + String(crsf.getFwdUp())      + ",";
+    j += "\"fwd_dropped\":" + String(crsf.getFwdDropped()) + ",";
+    j += "\"down_crc\":"    + String(crsf.getDownCrcErrors()) + ",";
+    j += "\"dup_addr\":"    + String(crsf.isDuplicateAddress() ? "true" : "false");
+    j += "},";
+    // NEU v4.04: UART B/C (Stand beim Booten) + S.Port/GPS-Daten
+    j += "\"ports\":{";
+    j += "\"b\":\"" + portStateText(g_ports[0]) + "\",";
+    j += "\"c\":\"" + portStateText(g_ports[1]) + "\",";
+#if defined(UART_C_SERIAL)
+    j += "\"has_c\":true,";
+#else
+    j += "\"has_c\":false,";
+#endif
+    j += "\"c_dup\":" + String(g_ports[1].duplicate ? "true" : "false");
+    if (sportLipoIsActive()) {
+        j += ",\"sport\":[";
+        for (int i = 0; i < SPORT_NUM_SENSORS; i++) {
+            if (i) j += ",";
+            j += "{\"online\":" + String(lipoSensor[i].online ? "true" : "false");
+            j += ",\"cells\":" + String(lipoSensor[i].cellCount);
+            j += ",\"total\":" + String(lipoSensor[i].totalVoltage, 2);
+            j += ",\"min\":"   + String(lipoSensor[i].minCell, 2) + "}";
+        }
+        j += "],\"sport_polls\":" + String(sportGetPollsSent());
+        j += ",\"sport_bytes\":"  + String(sportGetRawBytesRx());
+        j += ",\"sport_frames\":" + String(sportGetValidFrames());
+        j += ",\"sport_crc\":"    + String(sportGetCrcErrors());
+    }
+    if (gpsIsActive()) {
+        j += ",\"gps\":{\"fix\":" + String(gpsHasFix() ? "true" : "false");
+        j += ",\"sats\":" + String(gpsGetSatellites());
+        j += ",\"kmh\":"  + String(gpsGetSpeedKmh(), 1) + "}";
+    }
     j += "},";
     j += "\"wifi_ap_active\":" + String(webui_isApActive() ? "true" : "false");
 
@@ -1170,7 +1342,31 @@ static void handleConfig() {
       j += "\"ip\":\""          + webJsonEscape(g_wifi_ip)      + "\",";
         j += "\"wifi_auto\":"      + String(g_wifi_auto ? "true" : "false") + ",";
         j += "\"wifi_auto_timeout\":" + String(g_wifi_auto_timeout) + ",";
-        j += "\"wifi_always_on\":" + String(g_wifi_always_on ? "true" : "false");
+        j += "\"wifi_always_on\":" + String(g_wifi_always_on ? "true" : "false") + ",";
+        // NEU v4.04: Rollen UART B/C
+        j += "\"port_roles\":\"" + String(uartRoleOptions()) + "\",";
+        j += "\"portb_role\":" + String(g_port_role[0]) + ",";
+        j += "\"portc_role\":" + String(g_port_role[1]) + ",";
+        j += "\"portb_baud\":" + String(g_port_baud[0]) + ",";   // v4.05
+        j += "\"portc_baud\":" + String(g_port_baud[1]) + ",";
+#if defined(UART_C_SERIAL)
+        j += "\"has_portc\":true,";
+#else
+        j += "\"has_portc\":false,";
+#endif
+        j += "\"portc_dup\":" + String(g_ports[1].duplicate ? "true" : "false") + ",";
+#if defined(UART_B_SERIAL)
+        j += "\"has_portb\":true,";
+#else
+        j += "\"has_portb\":false,";
+#endif
+        // NEU v5.00: Platine (board = gespeicherte Wahl, board_info = aktiv seit Start)
+        j += "\"board\":" + String(g_board) + ",";
+        j += "\"board_select\":" + String(BOARD_SELECTABLE ? "true" : "false") + ",";
+        j += "\"board_info\":{\"name\":\"" + String(boardName()) + "\",\"chip\":\"" BOARD_CHIP "\",";
+        j += "\"rx\":" + String(UART_A_RX) + ",\"tx\":" + String(UART_A_TX) + ",\"out\":[";
+        for (int i = 0; i < 8; i++) { if (i) j += ","; j += String(OutPin[i]); }
+        j += "],\"led\":\"" BOARD_LED_TEXT "\",\"wifi\":\"" BOARD_WIFI_TEXT "\"}";
         j += "}";
         sendJson(j);
         return;
@@ -1181,6 +1377,10 @@ static void handleConfig() {
     bool changed = false;
 
     int v = 0;
+    // NEU v5.00: Platine (nur klassischer ESP32), wirkt nach Neustart
+    if (webJsonInt(body, "board", v) && v >= 0 && v < BOARD_VARIANT_COUNT && v != g_board) {
+      g_board = (uint8_t)v; changed = true;
+    }
     if (webJsonInt(body, "rc_system", v)) {
       v = constrain(v, 0, 4);
       if (v != RC_System) { RC_System = v; changed = true; }
@@ -1236,6 +1436,17 @@ static void handleConfig() {
     // NEU v2.02: WLAN dauerhaft an
     if (webJsonBool(body, "wifi_always_on", bv)) {
       if (bv != g_wifi_always_on) { g_wifi_always_on = bv; changed = true; }
+    }
+    // NEU v4.04: Rollen UART B/C, v4.05: Baudrate je UART (wirken nach Neustart)
+    const char* roleKey[2] = {"portb_role", "portc_role"};
+    const char* baudKey[2] = {"portb_baud", "portc_baud"};
+    for (uint8_t i = 0; i < 2; i++) {
+      if (webJsonInt(body, roleKey[i], v) && v >= 0 && v < UROLE_COUNT && v != g_port_role[i]) {
+        setPortRole(i, (uint8_t)v); changed = true;
+      }
+      if (webJsonInt(body, baudKey[i], v) && v > 0 && uartBaudValid((uint32_t)v) && (uint32_t)v != g_port_baud[i]) {
+        g_port_baud[i] = (uint32_t)v; changed = true;
+      }
     }
 
     String s;
@@ -1496,11 +1707,17 @@ void webui_init() {
     // NEU v2.02: WLAN dauerhaft an (g_wifi_always_on) uebersteuert den
     // GPIO13-Bootpin vollstaendig - siehe Kommentar bei g_wifi_always_on
     // in der .ino. Default AN, siehe Migrations-Default in nvsLoad().
+    // v4.00: WifiPin (GPIO13) entfaellt auf den C3/S3-Platinen.
+    // v4.01: Umschalten zur Laufzeit per BOOT-Taster (bootButtonCheck() in der .ino).
+    // v5.00: Basis/TXRX wieder mit GPIO13 (WIFI_BOOT_PIN, beim Start auf GND = AP an).
     if (g_wifi_always_on) {
         webui_enableAP();
-    } else if (!digitalRead(WifiPin)) {
+    }
+#if defined(WIFI_BOOT_PIN)
+    else if (digitalRead(WIFI_BOOT_PIN) == LOW) {
         webui_enableAP();
     }
+#endif
     webServer.on("/",            HTTP_GET,  []{ webServer.send_P(200,"text/html",WEBUI_HTML); });
     webServer.on("/api/status",  HTTP_GET,  handleStatus);
     webServer.on("/api/config",  HTTP_GET,  handleConfig);
@@ -1511,9 +1728,9 @@ void webui_init() {
     webServer.on("/api/restart", HTTP_POST, handleRestart);
     webServer.on("/api/save",    HTTP_POST, handleSave);
     webServer.on("/api/wifi",    HTTP_POST, handleWifi);
-    // v3.14: /api/otaupdate, /rc_common.js, /api/uartroles aus RC_Common
+    // v4.05: /api/otaupdate, /rc_common.js, /api/uartroles aus RC_Common
     webCommonRegister(webServer, storageSave);
-    // v3.15: Einstellungs-Backups im Flash (/api/backup/*, RC_Common)
+    // v4.06: Einstellungs-Backups im Flash (/api/backup/*, RC_Common)
     cfgBackupRegister(webServer);
     // WebServer.begin() bewusst unabhaengig vom AP-Status: der Server lauscht
     // so schon, sobald der AP spaeter per Auto-Failsafe/manuell aktiviert wird

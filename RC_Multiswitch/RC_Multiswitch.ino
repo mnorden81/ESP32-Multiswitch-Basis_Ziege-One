@@ -1,37 +1,31 @@
 /*
-    ESP32-MultiSwitch TXRX  v3.17 (Platine Multiswitch_TXRX)
-   Gleicher Firmwarestand wie MultiSwitch_ESP32_V3, nur die Ausgangs-Pins
-   fuer die Platine Multiswitch_TXRX (ULN2803A / TBD62083APG).
-   v3.00 erstellt von: PiperPilot - eigenstaendiges, unabhaengig baubares
-   Projekt, abgezweigt von ESP32-MultiSwitch v2.02 (Ordner MultiSwitch_ESP32/
-   in diesem Repo). v2.xx bleibt unveraendert bestehen.
-   v2.00 erstellt von: PiperPilot
-   Basiert auf: ESP32-SBus-Switch 0.6   (Ziege-One / Der RC-Modellbauer)
-   CRSF-Integration: ESP32-RC-Sound 0.43 (Ziege-One / Der RC-Modellbauer)
+    RC-Multiswitch  v5.00  (ESP32-C3 SuperMini / Waveshare ESP32-S3-Zero /
+                            ESP32 Platine Basis (D1 Mini) oder TXRX)
+    PiperPilot
 
  /////Projektbeschreibung////
  RC-gesteuerter 8-Kanal-Schalter/PWM-Ausgabemodul für ESP32. Empfängt
  Schaltbefehle über CRSF (ExpressLRS/TBS CrossFire, bidirektional) oder
- über SBUS-basierte RC-Systeme (FrSky/FlySky/ELRS normiert/HoTT) und
- steuert darüber acht digitale bzw. PWM-fähige Ausgänge (Licht, Blinker,
- Servos, Relais o.ä.). Die gesamte Konfiguration erfolgt über eine im
- Modul integrierte Weboberfläche (WLAN-Access-Point) - es wird kein
- SD-Karten-Slot benötigt oder verwendet. Ausführliche Beschreibung siehe
- ESP32-MultiSwitch-V2-Projektbeschreibung-v2.00.docx / README.md.
+ über SBUS (FrSky/FlySky/ELRS normiert/HoTT) und steuert acht digitale
+ bzw. PWM-fähige Ausgänge (Licht, Blinker, Servos, Relais o.ä.).
+ Konfiguration über die eingebaute Weboberfläche (WLAN-Access-Point) und
+ bei CRSF über das Lua-Menü am Sender. UART B/C: CRSF-Modulkette, S.Port,
+ GPS oder Raw. Gleicher Quellcode für alle Platinen: der Chip wird in
+ board_config.h automatisch erkannt, beim klassischen ESP32 wählt man die
+ Platine (Basis oder TXRX) in der WebUI bzw. im Lua (v5.00).
+ Beschreibung: README.md und docs/.
+
+ Herkunft: abgezweigt von ESP32-MultiSwitch V3 v3.12 (Repo
+ ESP32-Multiswitch-Basis_Ziege-One). Ab v5.00 wieder eine Firmware fuer
+ alle Platinen, ersetzt dort MultiSwitch_ESP32_V3 und _TXRX (v3.17). Basiert auf ESP32-SBus-Switch 0.6,
+ CRSF-Integration aus ESP32-RC-Sound 0.43 (beide Ziege-One / Der
+ RC-Modellbauer).
+
+ Versionsgeschichte: siehe CHANGELOG.md im Hauptordner des Repos.
 
  /////Pin Belegung////
- GPIO 13: WiFi Pin (LOW = AP beim Booten aktiv)
- GPIO 16: SBUS RX  /  CRSF RX
- GPIO 17: CRSF TX  (nur bei RC_System == 4)
- GPIO 27: Ausgang 1
- GPIO 25: Ausgang 2
- GPIO  5: Ausgang 3  (Strapping-Pin - beim ersten Einschalten Boot pruefen)
- GPIO 23: Ausgang 4
- GPIO 19: Ausgang 5
- GPIO 18: Ausgang 6
- GPIO 26: Ausgang 7
- GPIO 33: Ausgang 8
- GPIO  2: Status LED (AUS = kein Signal, Blinken = verbunden)
+ Siehe board_config.h (C3, S3, ESP32 Basis/TXRX) bzw. docs/.
+ CRSF und SBUS liegen beide auf UART A (CN1), je nach RC-System.
 
  RC-System Werte:
    0 = FrSky          (SBUS)
@@ -39,13 +33,13 @@
    2 = ELRS normiert  (SBUS)
    3 = HoTT           (SBUS)
    4 = CRSF           (ExpressLRS / TBS CrossFire, bidirektional)
-
- Versionsgeschichte: siehe CHANGELOG.md im Hauptordner des Repos.
+ Lua-Konfiguration und Modulkette gibt es nur bei CRSF.
 */
 
 // ======== Bibliotheken ==========================================
 /*
   Bolder Flight Systems SBUS  8.1.4   (für RC_System 0-3)
+  TinyGPSPlus 1.0.3                   (v4.04: Rolle GPS auf UART B/C)
   RC_Common 1.4.0 im Sketch-Ordner src/RC_Common/, enthaelt
     CRSF_ESP32 1.1.0, Basis https://github.com/Ziege-One/CRSF_ESP32
 */
@@ -53,19 +47,30 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <Preferences.h>
+#include "board_config.h"
 #include "sbus.h"
 #include "blink_presets.h"
-// v3.14: gemeinsame Basis aller ESP32-Module
+// v4.05: gemeinsame Basis aller ESP32-Module
 #include "src/RC_Common/rc_common.h"
 #include "src/RC_Common/CRSF_ESP32/crsf_esp32.h"
+#include "src/RC_Common/uart_roles.h"
+#include "src/RC_Common/uart_ports.h"
+#include "src/RC_Common/sport_lipo.h"
+#include "src/RC_Common/gps_speed.h"
 #include "src/RC_Common/lua_menu.h"
 #include "src/RC_Common/settings_common.h"
 #include "src/RC_Common/status_led.h"
 #include "src/RC_Common/wifi_failsafe.h"
 #include "src/RC_Common/web_common.h"
-#include "src/RC_Common/config_backup.h"   // v3.15
+#include "src/RC_Common/config_backup.h"   // v4.06
 
-constexpr uint16_t Version = 317; // 3.17 - Lua: Chunk-Fix (RC_Common 1.3.0), Werte in Ordnernamen, unpassende Felder ausgeblendet.
+constexpr uint16_t Version = 500; // 5.00 - CRSF Parameter Version Number
+// v5.00: eine Firmware fuer C3, S3 und klassischen ESP32 (Platine Basis/TXRX,
+//        Auswahl zur Laufzeit, NVS "board", Lua Global > Platine (Neustart)).
+// v4.11: baut mit Core 3.3.x (BOOT_PIN -> BOOT_BTN_PIN).
+// v4.10: Status-LED einheitlich (RC_Common 1.4.0), Lua "LED Farbfolge", BOOT 2 s.
+// v4.09: Lua: Chunk-Fix (RC_Common 1.3.0), Werte in Ordnernamen, unpassende Felder ausgeblendet.
+// v4.08: Lua: "PWM Festwert" bleibt bei PWM Modus MWprop ein Zahlenfeld (gesperrt) statt Info-Feld - sonst erst nach Menue-Verlassen einstellbar.
 
 // ======== SBUS-Schwellen (benannte Konstanten) ==================
 static constexpr uint16_t SBUS_LOW_THRESHOLD  =  800;
@@ -90,9 +95,15 @@ static constexpr int     PWM_RESOLUTION = 8;
 static constexpr uint8_t PWM_MAX        = 255;
 
 // ======== GPIO ==================================================
-static constexpr uint8_t OutPin[8] = {27, 25, 5, 23, 19, 18, 26, 33};
-static constexpr uint8_t WifiPin   = 13;
-static constexpr uint8_t LedPin    = 2;
+// v4.00: OutPwm[], UARTs und Status-LED siehe board_config.h
+// v5.00: Platine (Variante) aus NVS "board". g_board = gespeicherte Wahl,
+// g_board_boot = beim Start aktive Platine. OutPin[] kommt aus
+// BOARD_OUT_PINS[g_board_boot] (setup()), eine neue Wahl wirkt nach Neustart.
+uint8_t g_board      = 0;
+uint8_t g_board_boot = 0;
+uint8_t OutPin[8]    = {};
+const char* boardName() { return BOARD_VARIANT_NAMES[g_board_boot]; }
+static uint8_t boardClamp(int b) { return (b >= 0 && b < BOARD_VARIANT_COUNT) ? (uint8_t)b : 0; }
 
 // ======== Ausgangszustand =======================================
 int     pwm_wert[8]      = {255, 255, 255, 255, 255, 255, 255, 255};
@@ -126,13 +137,40 @@ bool          blinkOn[8]          = {};
 // ======== RC-Bus ================================================
 int  RC_System_boot = 0;
 
-bfs::SbusRx   sbus_rx(&Serial1, 16, 17, true); // Serial1 fuer SBUS (GPIO16/17)
+bfs::SbusRx   sbus_rx(&UART_A_SERIAL, UART_A_RX, UART_A_TX, true); // v4.00: SBUS auf UART A (wie CRSF)
 bfs::SbusData sbus_data;
 
 CRSF crsf;
 
 uint16_t channel_output[16] = {};
 bool     BUS_OK              = false;
+
+// ======== UART B/C: waehlbare Rolle (v4.04, ab v4.05 RC_Common) ==
+// UART A bleibt fest der RC-Eingang (CRSF oder SBUS). UART B und C (nur S3)
+// bekommen eine Rolle aus RC_Common/uart_roles.h (0 Aus, 1 CRSF =
+// Modulkette, 2 S.Port, 3 GPS, 4 Raw) und je eine Baudrate. Gestartet
+// werden sie in setup() ueber uartPortsBegin(), Aenderungen wirken nach
+// einem Neustart. v5.00: Basis/TXRX (klassischer ESP32) haben keinen
+// UART B; g_ports[0] bleibt dort ohne Serial (Rolle wirkt als Aus).
+uint8_t  g_port_role[2] = {UROLE_CRSF, UROLE_CRSF};   // NVS u1role/u2role
+uint32_t g_port_baud[2] = {420000, 420000};           // NVS u1baud/u2baud
+#if defined(UART_C_SERIAL)
+static constexpr uint8_t UART_PORT_COUNT = 2;
+#else
+static constexpr uint8_t UART_PORT_COUNT = 1;
+#endif
+// Stand beim Booten (activeRole, duplicate, idle), gesetzt in setup()
+UartPort g_ports[2] = {};
+
+// Neue Rolle: Baudrate auf den Protokollwert der Rolle setzen (Raw und
+// Aus behalten die bisherige)
+static void setPortRole(uint8_t i, uint8_t role) {
+    role = uartRoleClamp(role);
+    if (i > 1 || role == g_port_role[i]) return;
+    g_port_role[i] = role;
+    uint32_t b = uartRoleDefaultBaud(role);
+    if (b && role != UROLE_RAW) g_port_baud[i] = b;
+}
 
 // ======== CRSF-Timeout ==========================================
 // v0.14: auf 2000 ms erhöht – robuster bei kurzen Unterbrechungen
@@ -145,7 +183,8 @@ unsigned long lastCrsfPacket = 0;
 uint8_t wm_prop_value[8] = {255, 255, 255, 255, 255, 255, 255, 255};
 
 // ======== Konfiguration (aus NVS) ===============================
-int RC_System      = 0;
+int RC_System      = 4;   // v4.07: Werkseinstellung CRSF (vorher 0 = FrSky SBUS)
+bool g_led_rgb    = STATUS_LED_RGB_DEFAULT;   // v4.10: LED-Farbfolge RGB (S3-Zero) oder GRB
 int einkanal_mode  = 0;
 int CRSF_Channel   = 4;
 int modul_adress   = 0;
@@ -217,7 +256,7 @@ static bool nvsSaveScheduled = false;
 static unsigned long nvsSaveDueMs = 0;
 static constexpr unsigned long NVS_SAVE_DEBOUNCE_MS = 500;
 
-// v3.14: WLAN, Moduladresse und WLAN-Failsafe liegen unter den
+// v4.05: WLAN, Moduladresse, WLAN-Failsafe und UART B/C liegen unter den
 // gemeinsamen RC_Common-Schluesseln, siehe src/RC_Common/settings_common.h
 static void copyStr(char* dst, const char* src, size_t len) {
     strncpy(dst, src, len - 1);
@@ -234,6 +273,7 @@ static void commonToSettings(RcCommonSettings& s) {
     s.wifiAuto    = g_wifi_auto;
     s.wifiTimeout = g_wifi_auto_timeout;
     s.wifiAlways  = g_wifi_always_on;
+    for (int i = 0; i < 2; i++) { s.role[i] = g_port_role[i]; s.baud[i] = g_port_baud[i]; }
 }
 
 static void settingsToCommon(const RcCommonSettings& s) {
@@ -245,6 +285,7 @@ static void settingsToCommon(const RcCommonSettings& s) {
     g_wifi_auto         = s.wifiAuto;
     g_wifi_auto_timeout = s.wifiTimeout;
     g_wifi_always_on    = s.wifiAlways;
+    for (int i = 0; i < 2; i++) { g_port_role[i] = s.role[i]; g_port_baud[i] = s.baud[i]; }
 }
 
 static void nvsWriteNow() {
@@ -273,7 +314,9 @@ static void nvsWriteNow() {
         snprintf(key, sizeof(key), "pw3_%d", i); p.putInt(key, pwm_wert3[i]);
         snprintf(key, sizeof(key), "mo3_%d", i); p.putInt(key, mode3[i]);
     }
-    // v3.14: gemeinsame Schluessel aus RC_Common (settings_common.h)
+    p.putBool("ledrgb", g_led_rgb);   // v4.10
+    p.putUChar("board", g_board);     // v5.00
+    // v4.05: gemeinsame Schluessel aus RC_Common (settings_common.h)
     RcCommonSettings s;
     commonToSettings(s);
     rcSettingsSave(p, s);
@@ -305,8 +348,9 @@ static void nvsProcessPending() {
 static void nvsLoad() {
     Preferences p;
     p.begin("msw", true);
+    g_board = boardClamp(p.getUChar("board", 0));   // v5.00, vor dem Ausstieg (eigene Taste)
     if (!p.isKey("rc_sys")) { p.end(); return; }
-    RC_System     = p.getInt("rc_sys",  0);
+    RC_System     = p.getInt("rc_sys",  4);
     CRSF_Channel  = p.getInt("crsf_ch", 4);
     einkanal_mode = p.getInt("ek_mode", 0);
     for (int g = 0; g < MULTISW_NUM_GROUPS; g++) {
@@ -332,10 +376,11 @@ static void nvsLoad() {
         snprintf(key, sizeof(key), "pw3_%d", i); pwm_wert3[i]      = p.getInt(key, 255);
         snprintf(key, sizeof(key), "mo3_%d", i); mode3[i]          = p.getInt(key, 0);
     }
-    // v3.14: gemeinsame Schluessel (RC_Common). Fehlen sie (erster Start
+    g_led_rgb = p.getBool("ledrgb", STATUS_LED_RGB_DEFAULT);   // v4.10
+    // v4.05: gemeinsame Schluessel (RC_Common). Fehlen sie (erster Start
     // nach dem Update), werden die alten Schluessel einmalig uebernommen.
     // Defaults wie bisher: WLAN-Auto-Failsafe und "dauerhaft an" AN (siehe
-    // Kommentare bei g_wifi_auto/g_wifi_always_on).
+    // Kommentare bei g_wifi_auto/g_wifi_always_on), UART B/C CRSF.
     RcCommonSettings s;
     commonToSettings(s);
     bool migrated = rcSettingsLoad(p, s, nullptr);
@@ -351,7 +396,7 @@ static void nvsLoad() {
 }
 
 static void nvsReset() {
-    RC_System = 0; CRSF_Channel = 4; einkanal_mode = 0; modul_adress = 0;
+    RC_System = 4; CRSF_Channel = 4; einkanal_mode = 0; modul_adress = 0;
     for (int g = 0; g < MULTISW_NUM_GROUPS; g++) {
         EK_Gruppen_Adresse[g] = 255; SBUS_Gruppen_Channel[g] = 999; SBUS_Gruppen_Mode[g] = 0;
     }
@@ -368,6 +413,9 @@ static void nvsReset() {
     strncpy(g_device_name, "MultiSwitch", sizeof(g_device_name)-1);  // NEU V1.4
     g_wifi_auto = true; g_wifi_auto_timeout = 60;    // NEU v2.00, Default AN seit v2.01
     g_wifi_always_on = true;                         // NEU v2.02
+    for (int i = 0; i < 2; i++) { g_port_role[i] = UROLE_CRSF; g_port_baud[i] = uartRoleDefaultBaud(UROLE_CRSF); }  // v4.05
+    g_led_rgb = STATUS_LED_RGB_DEFAULT;   // v4.10
+    // v5.00: g_board bleibt bei Werkseinstellungen erhalten (Hardware-Eigenschaft)
     nvsSave();
     nvsFlushPending();
 }
@@ -375,16 +423,24 @@ static void nvsReset() {
 void storageSave() { nvsFlushPending(); }
 
 // ======== Status-LED ============================================
-// v3.14: gemeinsame Muster aus RC_Common (status_led.h): aus = kein
-// Signal, langsam = OK, schnell = Frames ohne RC-Link bzw. SBUS-Failsafe.
+// v4.10: Farben und Muster aus RC_Common 1.4.0, gleiches Schema in allen
+// Modulen: gruen langsam = OK, rot schnell = Frames ohne RC-Link bzw.
+// Failsafe, rot Aufblitzen = kein Signal, blau Doppelblitz = doppelte
+// Moduladresse, violett statt gruen/rot = WLAN an.
 // Reine Anzeige - aendert weder BUS_OK noch das Ausgangsverhalten.
+
+// Konfigurationsfehler (Doppelblitz). v4.01: gesetzt, wenn der Router eine
+// doppelte Moduladresse erkennt (siehe loop()).
+bool g_ledConfigError = false;
 static unsigned long lastSbusFrameMs = 0;
-static StatusLed statusLed;   // GPIO 2
+static StatusLed statusLed;   // S3 WS2812, C3 ohne LED (Pin -1)
+bool webui_isApActive();      // webui.h
 
 static void updateLed() {
     unsigned long now = millis();
     const LinkStatistics& ls = crsf.getLinkStatistics();
     StatusLedInput in = {};
+    in.configError     = g_ledConfigError;
     in.crsf            = (RC_System_boot == 4);
     in.busOk           = BUS_OK;
     in.lastRcFrameMs   = crsf.getLastRcFrameMs();
@@ -392,7 +448,9 @@ static void updateLed() {
     in.uplinkLQ        = ls.uplinkLQ;
     in.lastSbusFrameMs = lastSbusFrameMs;
     in.sbusFailsafe    = sbus_data.failsafe;
-    statusLed.update(statusLedMode(in, now), now);
+    statusLed.setRgbOrder(g_led_rgb);
+    // Doppelblitz gibt es hier nur bei doppelter Adresse -> blau
+    statusLed.update(statusLedMode(in, now), now, g_ledConfigError, webui_isApActive());
 }
 
 // ======== CRSF-Failsafe =========================================
@@ -405,7 +463,7 @@ static void checkCrsfTimeout() {
     }
 }
 
-// ======== SBUS-Zeitlimit (NEU v3.14, wie RC-Multiswitch v4.03) ====
+// ======== SBUS-Zeitlimit (NEU v4.03) ============================
 // Ohne SBUS-Frames (nicht nur Failsafe-Bit) gilt das Signal nach 10 s als
 // weg. lastSbusFrameMs wird beim Empfang jedes Frames gesetzt (loop()).
 static constexpr unsigned long SBUS_TIMEOUT_MS = 10000;
@@ -588,7 +646,14 @@ static void einkanalFunctionSBUSGroup(uint8_t g, uint16_t channel) {
 //   78: Sel  "Auto-Failsafe"  Aus;Ein  -> g_wifi_auto
 //   79: U8   "Auto Timeout"   5-240 s  -> g_wifi_auto_timeout
 //   80: Sel  "Dauerhaft an"   Aus;Ein  -> g_wifi_always_on
-// Total: 5+8*9+4=81 Parameter (0..80), Tabelle siehe buildLuaMenu()
+// Total: 5+8*9+4=81 Parameter (0..80)
+// UART B/C (NEU v4.04), ebenfalls angehaengt:
+//   81: Folder "UART B/C"     (Kinder 82,83,84)
+//   82: Sel  "UART B"         Aus;CRSF;S.Port;GPS;Raw -> g_port_role[0]
+//   83: Sel  "UART C"         wie 82 (S3), Info beim C3 -> g_port_role[1]
+//   84: Sel  "UART B Baud"    Auto;9600..420000 (v4.05, vorher "GPS Baud")
+//   85: Sel  "UART C Baud"    wie 84 (S3), Info beim C3
+// Total: 86 Parameter (0..85), Tabelle siehe buildLuaMenu()
 
 // ── CRSF-Geraeteadresse + Ping-Slot aus der WM-Adresse (uebernommen aus Soundmodul v1.24) ──
 // Adresse = 0xC0 + modul_adress; Slot = (Adresse-0xC0)*2; Antwort erst im eigenen
@@ -632,13 +697,13 @@ static uint8_t getPwmModus(int x) {
     return (pwm_wert[x] >= 200 && pwm_wert[x] <= 207) ? 1 : 0;
 }
 
-// ── Lua-Menue als Tabelle (v3.14, RC_Common lua_menu.h) ──────────────
+// ── Lua-Menue als Tabelle (v4.05, RC_Common lua_menu.h) ──────────────
 // Jeder Eintrag steht einmal in buildLuaMenu(), Senden und Schreiben
 // laufen generisch ueber luaMenu. Lese-/Schreibfunktionen bekommen als
-// Argument die Ausgang-Nummer. Schreiben ist auf min/max der gerade
-// gesendeten Ansicht begrenzt.
-static LuaItem luaItems[90];
-static LuaMenu luaMenu(luaItems, 90);
+// Argument die Ausgang- bzw. UART-Nummer. Schreiben ist auf min/max der
+// gerade gesendeten Ansicht begrenzt.
+static LuaItem luaItems[96];
+static LuaMenu luaMenu(luaItems, 96);
 static char    luaOutName[8][12];   // "Ausgang 1".."Ausgang 8"
 
 static uint8_t luaGetAddr(uint8_t)              { return (uint8_t)modul_adress; }
@@ -654,6 +719,13 @@ static void    luaSetCrsfCh(uint8_t, uint8_t v) { CRSF_Channel = v; nvsSave(); }
 static void luaHideSbusOnly(uint8_t, LuaView& v, char*) {
     if (RC_System_boot == 4) v.hidden = true;
 }
+static uint8_t luaGetLedRgb(uint8_t)            { return g_led_rgb ? 0 : 1; }   // v4.10
+static void    luaSetLedRgb(uint8_t, uint8_t v) { g_led_rgb = (v == 0); nvsSave(); }
+
+// v5.00: Platine (nur klassischer ESP32 waehlbar), wirkt nach Neustart
+static uint8_t luaGetBoard(uint8_t)            { return g_board; }
+static void    luaSetBoard(uint8_t, uint8_t v) { g_board = boardClamp(v); nvsSave(); }
+
 static void luaShowGlobalFolder(uint8_t, LuaView& v, char* buf) {
     snprintf(buf, LUA_VIEW_BUF, "Global (Adr %d)", (int)modul_adress);
     v.name = buf;
@@ -738,16 +810,46 @@ static void    luaSetWifiTo(uint8_t, uint8_t v)     { g_wifi_auto_timeout = v; n
 static uint8_t luaGetWifiAlways(uint8_t)            { return g_wifi_always_on ? 1 : 0; }
 static void    luaSetWifiAlways(uint8_t, uint8_t v) { g_wifi_always_on = (v != 0); nvsSave(); }
 
+// UART B/C 82-85: wirken nach einem Neustart (UARTs starten in setup())
+static uint8_t luaGetRole(uint8_t i)            { return g_port_role[i]; }
+static void    luaSetRole(uint8_t i, uint8_t v) { setPortRole(i, v); nvsSave(); }
+static uint8_t luaGetBaud(uint8_t i)            { return uartBaudToIndex(g_port_baud[i]); }
+// Rollen im Ordnernamen, Baudrate nur bei aktivem Port sichtbar
+static void luaShowUartFolder(uint8_t, LuaView& v, char* buf) {
+#if defined(UART_C_SERIAL)
+    snprintf(buf, LUA_VIEW_BUF, "UART B/C (%s, %s)", uartRoleName(g_port_role[0]), uartRoleName(g_port_role[1]));
+#else
+    snprintf(buf, LUA_VIEW_BUF, "UART B (%s)", uartRoleName(g_port_role[0]));
+#endif
+    v.name = buf;
+}
+static void luaViewBaud(uint8_t i, LuaView& v, char*) {
+    if (g_port_role[i] == 0) v.hidden = true;
+}
+static void luaHideAlways(uint8_t, LuaView& v, char*) { v.hidden = true; }   // Feld ohne Hardware
+static void    luaSetBaud(uint8_t i, uint8_t v) { g_port_baud[i] = uartBaudFromIndex(v); nvsSave(); }
+
 static void buildLuaMenu() {
     LuaMenu& m = luaMenu;
     m.clear();
     m.folder(0, 0, "");
-    static char luaVersionText[24];
-    snprintf(luaVersionText, sizeof(luaVersionText), "v%d.%02d ESP32 TXRX", Version / 100, Version % 100);
+    // v4.07: Text aus Version, damit er nicht mehr veraltet (stand auf v4.05)
+    static char luaVersionText[16];
+    snprintf(luaVersionText, sizeof(luaVersionText), "v%d.%02d %s", Version / 100, Version % 100, boardName());
     m.info(1, 0, "Version", luaVersionText);
     m.folder(2, 0, "Global")->view = luaShowGlobalFolder;
     m.u8(3, 2, "Switch Addr", 0, 20, "", luaGetAddr, luaSetAddr);
     m.u8(4, 2, "SBUS EK Kanal", 0, 15, "", luaGetCrsfCh, luaSetCrsfCh)->view = luaHideSbusOnly;
+#if STATUS_LED_WS2812
+    m.select(86, 2, "LED Farbfolge", "RGB (S3-Zero);GRB", luaGetLedRgb, luaSetLedRgb);   // v4.10
+#else
+    m.info(86, 2, "LED Farbfolge", "keine RGB-LED")->view = luaHideAlways;
+#endif
+#if BOARD_SELECTABLE
+    m.select(87, 2, "Platine (Neustart)", "Basis (D1 Mini);TXRX", luaGetBoard, luaSetBoard);   // v5.00
+#else
+    m.info(87, 2, "Platine", BOARD_VARIANT_NAMES[0]);   // v5.00: C3/S3 automatisch
+#endif
     for (uint8_t x = 0; x < 8; x++) {
         uint8_t fi = 5 + x * 9;
         snprintf(luaOutName[x], sizeof(luaOutName[x]), "Ausgang %d", x + 1);
@@ -768,6 +870,29 @@ static void buildLuaMenu() {
     m.select(78, 77, "Auto-Failsafe", "Aus;Ein", luaGetWifiAuto, luaSetWifiAuto);
     m.u8(79, 77, "Auto Timeout", 5, 240, "s", luaGetWifiTo, luaSetWifiTo);
     m.select(80, 77, "Dauerhaft an", "Aus;Ein", luaGetWifiAlways, luaSetWifiAlways);
+#if defined(UART_B_SERIAL)
+    m.folder(81, 0, "UART B/C")->view = luaShowUartFolder;
+    m.select(82, 81, "UART B (Neustart)", uartRoleOptions(), luaGetRole, luaSetRole, 0);
+#else
+    // v5.00: Basis/TXRX ohne UART B/C, Feld-IDs bleiben belegt
+    m.folder(81, 0, "UART B/C")->view = luaHideAlways;
+    m.info(82, 81, "UART B", "nicht vorhanden")->view = luaHideAlways;
+#endif
+#if defined(UART_C_SERIAL)
+    m.select(83, 81, "UART C (Neustart)", uartRoleOptions(), luaGetRole, luaSetRole, 1);
+#else
+    m.info(83, 81, "UART C", "nicht vorhanden")->view = luaHideAlways;
+#endif
+#if defined(UART_B_SERIAL)
+    m.select(84, 81, "UART B Baud", uartBaudOptions(), luaGetBaud, luaSetBaud, 0)->view = luaViewBaud;
+#else
+    m.info(84, 81, "UART B Baud", "nicht vorhanden")->view = luaHideAlways;
+#endif
+#if defined(UART_C_SERIAL)
+    m.select(85, 81, "UART C Baud", uartBaudOptions(), luaGetBaud, luaSetBaud, 1)->view = luaViewBaud;
+#else
+    m.info(85, 81, "UART C Baud", "nicht vorhanden")->view = luaHideAlways;
+#endif
 }
 
 // ======== Webinterface ==========================================
@@ -785,7 +910,7 @@ static void buildLuaMenu() {
 // mitten drin abwuergen, sobald zufaellig kurz ein gueltiges RC-Signal
 // hereinkaeme. g_wifi_auto/g_wifi_auto_timeout siehe weiter oben, webui_
 // isApActive()/webui_enableAP() in webui.h.
-static WifiFailsafe wifiFailsafe;   // RC_Common wifi_failsafe.h (v3.14)
+static WifiFailsafe wifiFailsafe;   // RC_Common wifi_failsafe.h (v4.05)
 static void wifiFailsafeCheck() {
     // "Dauerhaft an": AP laeuft seit dem Booten (webui_init()), der Timer
     // ist dann wirkungslos. Laeuft der AP schon, ist nichts zu tun.
@@ -793,6 +918,34 @@ static void wifiFailsafeCheck() {
                            BUS_OK, webui_isApActive())) {
         Serial.printf("Auto-WLAN-Failsafe: %u s ohne gueltiges RC-Signal - schalte WLAN ein.\n",
                       (unsigned)g_wifi_auto_timeout);
+        webui_enableAP();
+    }
+}
+
+// ======== BOOT-Taster (NEU v4.01) ===============================
+// Langer Druck (>= 2 s, bis v4.09 3 s) schaltet den WLAN-AP um, wirkt sofort und ohne
+// nvsSave() - wie der Sofort-Schalter in der Web-UI. Der Taster ist ein
+// Strapping-Pin (beim Reset gedrueckt = Download-Modus). Deshalb wird er
+// erst ausgewertet, nachdem er nach dem Booten einmal losgelassen war.
+static constexpr unsigned long BOOT_LONG_PRESS_MS = 2000;   // v4.10: 2 s wie beim Router
+static void bootButtonCheck() {
+    static bool          armed   = false;
+    static bool          pressed = false;
+    static bool          fired   = false;
+    static unsigned long downMs  = 0;
+
+    bool down = (digitalRead(BOOT_BTN_PIN) == LOW);
+    if (!armed) { if (!down) armed = true; return; }
+    if (!down) { pressed = false; return; }
+    unsigned long now = millis();
+    if (!pressed) { pressed = true; fired = false; downMs = now; return; }
+    if (fired || now - downMs < BOOT_LONG_PRESS_MS) return;
+    fired = true;   // nur einmal je Druck
+    if (webui_isApActive()) {
+        Serial.println("BOOT-Taster: WLAN-AP aus");
+        webui_disableAP();
+    } else {
+        Serial.println("BOOT-Taster: WLAN-AP ein");
         webui_enableAP();
     }
 }
@@ -833,8 +986,17 @@ static bool evalSlotActive(int k, int pv, uint16_t d) {
     return false;
 }
 
+// ======== Ausgang schreiben (NEU v4.00) ==========================
+// Einziger Ort mit ledcWrite() auf OutPin[], nur aus Output() aufgerufen.
+// Ausgaenge ohne LEDC-Kanal (C3: Ausgang 7/8, OutPwm[x]==false) schalten
+// digital: an ab 50 % Duty.
+static void outWrite(int x, uint8_t duty) {
+    if (OutPwm[x]) ledcWrite(OutPin[x], duty);
+    else           digitalWrite(OutPin[x], duty >= 128 ? HIGH : LOW);
+}
+
 // ======== Output ================================================
-// Zentrale Ausgabefunktion – EINZIGER Ort, der ledcWrite() auf OutPin[] aufruft.
+// Zentrale Ausgabefunktion – EINZIGER Aufrufer von outWrite().
 static void Output(uint16_t d) {
     unsigned long now = millis();
     for (int x = 0; x < 8; x++) {
@@ -884,22 +1046,22 @@ static void Output(uint16_t d) {
                     if (now - previousTimeLED[x] >= (unsigned long)(10 * modeL)) {
                         previousTimeLED[x] = now;
                         blinkOn[x] = true;
-                        ledcWrite(OutPin[x], duty);
+                        outWrite(x, duty);
                     }
                 } else {
                     if (now - previousTimeLED[x] >= (unsigned long)(10 * modeH)) {
                         previousTimeLED[x] = now;
                         blinkOn[x] = false;
-                        ledcWrite(OutPin[x], 0);
+                        outWrite(x, 0);
                     }
                 }
             } else {
                 blinkOn[x] = true;
-                ledcWrite(OutPin[x], duty);
+                outWrite(x, duty);
             }
         } else {
             blinkOn[x] = false;
-            ledcWrite(OutPin[x], 0);
+            outWrite(x, 0);
         }
     }
 }
@@ -910,29 +1072,61 @@ void setup() {
     nvsLoad();
 
     RC_System_boot = RC_System;
+    // v5.00: Ausgangspins der gewaehlten Platine
+    g_board_boot = g_board;
+    for (int i = 0; i < 8; i++) OutPin[i] = BOARD_OUT_PINS[g_board_boot][i];
 
     if (RC_System_boot == 4) {
-        crsf.init_crsf(&Serial2, 16, 17); // Serial2 fuer CRSF (GPIO16=RX, 17=TX)
+        // v4.00: CRSF auf UART A (UART0), Pins siehe board_config.h
+        crsf.init_crsf(&UART_A_SERIAL, UART_A_RX, UART_A_TX);
         crsf.setDeviceAddress(crsfAddrFromWM());   // eindeutige CRSF-Adresse aus WM-Adresse
-        Serial.printf("CRSF gestartet (RX=16, TX=17, 420000 Bd)  Geraeteadresse 0x%02X  Slot %d\n",
+        Serial.printf("CRSF gestartet (Board %s, RX=%d, TX=%d, 420000 Bd)  Geraeteadresse 0x%02X  Slot %d\n",
+                      boardName(), UART_A_RX, UART_A_TX,
                       crsfAddrFromWM(), (uint8_t)constrain(modul_adress,0,15)*2);
     } else {
-        sbus_rx.Begin();
-        Serial.printf("SBUS gestartet (RX=16, RC-System=%d)\n", RC_System_boot);
+        sbus_rx.Begin();   // v4.00: ebenfalls UART A
+        Serial.printf("SBUS gestartet (Board %s, RX=%d, RC-System=%d)\n",
+                      boardName(), UART_A_RX, RC_System_boot);
     }
+
+    // v4.04/v4.05: UART B/C nach Rolle starten (RC_Common uart_ports.h):
+    // CRSF als Router fuer die Modulkette (nur bei RC_System 4), S.Port,
+    // GPS oder Raw. S.Port, GPS und Raw laufen nur auf einem Port, doppelt
+    // gewaehlt bleibt UART C aus.
+#if defined(UART_B_SERIAL)
+    g_ports[0] = {"UART B", &UART_B_SERIAL, UART_B_RX, UART_B_TX, g_port_role[0], g_port_baud[0]};
+#else
+    g_ports[0] = {"UART B", nullptr, 0, 0, g_port_role[0], g_port_baud[0]};   // v5.00: Basis/TXRX
+#endif
+#if defined(UART_C_SERIAL)
+    g_ports[1] = {"UART C", &UART_C_SERIAL, UART_C_RX, UART_C_TX, g_port_role[1], g_port_baud[1]};
+#endif
+    uartPortsBegin(g_ports, UART_PORT_COUNT, crsf, RC_System_boot == 4);
+    buildLuaMenu();
 
     for (int i = 0; i < 8; i++) {
-        ledcAttach(OutPin[i], PWM_FREQ, PWM_RESOLUTION);
-        ledcWrite(OutPin[i], 0);
+        if (OutPwm[i]) {
+            ledcAttach(OutPin[i], PWM_FREQ, PWM_RESOLUTION);
+            ledcWrite(OutPin[i], 0);
+        } else {
+            pinMode(OutPin[i], OUTPUT);   // C3: Ausgang 7/8 ohne LEDC-Kanal
+            digitalWrite(OutPin[i], LOW);
+        }
     }
 
-    pinMode(WifiPin, INPUT_PULLUP);
-    statusLed.begin(LedPin, false);   // v3.14: RC_Common status_led.h
-    buildLuaMenu();
+#if STATUS_LED_WS2812
+    statusLed.begin(STATUS_LED_PIN, true, STATUS_LED_BRIGHTNESS);
+#else
+    statusLed.begin(STATUS_LED_PIN, false);
+#endif
+    pinMode(BOOT_BTN_PIN, INPUT_PULLUP);   // v4.01: BOOT-Taster fuer den WLAN-AP
+#if defined(WIFI_BOOT_PIN)
+    pinMode(WIFI_BOOT_PIN, INPUT_PULLUP);  // v5.00: Basis/TXRX, GND beim Start = AP an
+#endif
 
     webui_init();
 
-    Serial.printf("MultiSwitch ESP32 v%d.%02d\n", Version / 100, Version % 100);
+    Serial.printf("RC-Multiswitch %s v%d.%02d\n", boardName(), Version / 100, Version % 100);
     Serial.printf("SSID: %s\n", g_wifi_ssid);
     Serial.printf("IP:   %s\n", AP_IP_STR);
 }
@@ -942,9 +1136,13 @@ void loop() {
 
     nvsProcessPending();
     wifiFailsafeCheck(); // NEU v2.00 - unbedingt am Loop-Anfang, damit auch der SBUS-Failsafe-Fruehausstieg unten ihn nicht ueberspringt
+    bootButtonCheck();   // NEU v4.01 - aus demselben Grund am Loop-Anfang
+    uartPortsUpdate();   // NEU v4.04 - S.Port/GPS, tut nichts ohne diese Rolle
 
     if (RC_System_boot == 4) {
         crsf.read_packets(0);
+        crsf.route_packets();                         // v4.01: Modulkette B/C
+        if (crsf.isDuplicateAddress()) g_ledConfigError = true;
         for (int i = 0; i < 16; i++)
             channel_output[i] = crsf.get_crfs_channels(i);
 
@@ -960,6 +1158,7 @@ void loop() {
             lastCrsfPacket = millis();
         }
         checkCrsfTimeout();
+        uartPortsTelemetry(crsf);   // v4.04: S.Port/GPS an den Empfaenger
 
         // Kein Telemetrie-Dummy: DEVICE_PING / LUA-Pakete werden durch
         // device_info und param-Antworten sichergestellt (keine Dummy-Daten noetig)
@@ -1005,7 +1204,7 @@ void loop() {
     } else {
         if (sbus_rx.Read()) {
             sbus_data = sbus_rx.data();
-            lastSbusFrameMs = millis();   // v3.14: SBUS-Zeitlimit und LED
+            lastSbusFrameMs = millis();   // v4.00: fuer die Status-LED
 
             if (sbus_data.failsafe) {
                 BUS_OK = false;
@@ -1028,7 +1227,7 @@ void loop() {
             }
             Data = einkanal_Data;
         }
-        checkSbusTimeout();   // v3.14
+        checkSbusTimeout();   // v4.03
     }
 
     Output(Data);

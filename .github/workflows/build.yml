@@ -3,7 +3,9 @@ name: Build
 # Gemeinsame CI aller ESP32-Module (RC_Common 1.4.0):
 #   1. Jede Kopie von src/RC_Common/ gegen MANIFEST.sha256 pruefen und die
 #      Host-Tests (CRSF, Lua-Menue, LED, Einstellungen) ausfuehren.
-#   2. Alle drei Sketches mit festem Core kompilieren und die Images
+#      v5.00: Sketch RC_Multiswitch zusaetzlich gegen FIRMWARE.sha256 (gleiche
+#      Datei in RC-Multiswitch-ESP32-C3/-S3).
+#   2. Beide Sketches mit festem Core kompilieren und die Images
 #      hochladen (*.ino.bin = OTA-Update, *.merged.bin = Komplett-Image).
 
 on:
@@ -20,11 +22,13 @@ jobs:
       - uses: actions/checkout@v5
       - name: Kopien unveraendert (MANIFEST.sha256)
         run: |
-          for d in MultiSwitch_ESP32 MultiSwitch_ESP32_V3 MultiSwitch_ESP32_TXRX; do
+          for d in MultiSwitch_ESP32 RC_Multiswitch; do
             (cd $d/src/RC_Common && sha256sum -c --quiet MANIFEST.sha256) || exit 1
           done
+      - name: Firmware RC_Multiswitch unveraendert (FIRMWARE.sha256)
+        run: cd RC_Multiswitch && sha256sum -c --quiet FIRMWARE.sha256
       - name: Host-Tests
-        run: sh MultiSwitch_ESP32_V3/src/RC_Common/tests/run_tests.sh
+        run: sh RC_Multiswitch/src/RC_Common/tests/run_tests.sh
 
   build:
     name: Build ${{ matrix.sketch }}
@@ -33,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        sketch: [ MultiSwitch_ESP32, MultiSwitch_ESP32_V3, MultiSwitch_ESP32_TXRX ]
+        sketch: [ MultiSwitch_ESP32, RC_Multiswitch ]
     steps:
       - uses: actions/checkout@v5
 
