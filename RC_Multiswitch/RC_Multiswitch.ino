@@ -70,7 +70,7 @@
 #include "src/RC_Common/config_backup.h"   // v4.06
 #include "src/RC_Common/funk_link.h"       // v5.01
 
-constexpr uint16_t Version = 502; // 5.02 - CRSF Parameter Version Number
+constexpr uint16_t Version = 503; // 5.03 - CRSF Parameter Version Number
 // v5.01: Funk (ESP-NOW, RC_Common 1.5.0): RC-System 5 = Zentrale, 6 = Teilnehmer.
 // v5.00: eine Firmware fuer C3, S3 und klassischen ESP32 (Platine Basis/TXRX,
 //        Auswahl zur Laufzeit, NVS "board", Lua Global > Platine (Neustart)).
