@@ -1,5 +1,5 @@
 /*
-    RC-Multiswitch  v5.00  (ESP32-C3 SuperMini / Waveshare ESP32-S3-Zero /
+    RC-Multiswitch  v5.01  (ESP32-C3 SuperMini / Waveshare ESP32-S3-Zero /
                             ESP32 Platine Basis (D1 Mini) oder TXRX)
     PiperPilot
 
@@ -13,6 +13,9 @@
  GPS oder Raw. Gleicher Quellcode für alle Platinen: der Chip wird in
  board_config.h automatisch erkannt, beim klassischen ESP32 wählt man die
  Platine (Basis oder TXRX) in der WebUI bzw. im Lua (v5.00).
+ Funk (v5.01): Module per ESP-NOW verbinden. Die Zentrale haengt am
+ Empfaenger und funkt CRSF weiter, Teilnehmer bekommen CRSF nur aus dem
+ Funk (RC-System 5/6, RC_Common funk_link.h).
  Beschreibung: README.md und docs/.
 
  Herkunft: abgezweigt von ESP32-MultiSwitch V3 v3.12 (Repo
@@ -33,15 +36,17 @@
    2 = ELRS normiert  (SBUS)
    3 = HoTT           (SBUS)
    4 = CRSF           (ExpressLRS / TBS CrossFire, bidirektional)
- Lua-Konfiguration und Modulkette gibt es nur bei CRSF.
+   5 = CRSF + Funk senden (Zentrale, v5.01)
+   6 = CRSF aus Funk      (Teilnehmer, v5.01, UART A bleibt frei)
+ Lua-Konfiguration und Modulkette gibt es nur bei CRSF (4-6).
 */
 
 // ======== Bibliotheken ==========================================
 /*
   Bolder Flight Systems SBUS  8.1.4   (für RC_System 0-3)
   TinyGPSPlus 1.0.3                   (v4.04: Rolle GPS auf UART B/C)
-  RC_Common 1.4.0 im Sketch-Ordner src/RC_Common/, enthaelt
-    CRSF_ESP32 1.1.0, Basis https://github.com/Ziege-One/CRSF_ESP32
+  RC_Common 1.5.0 im Sketch-Ordner src/RC_Common/, enthaelt
+    CRSF_ESP32 1.2.0, Basis https://github.com/Ziege-One/CRSF_ESP32
 */
 
 #include <Arduino.h>
@@ -63,8 +68,10 @@
 #include "src/RC_Common/wifi_failsafe.h"
 #include "src/RC_Common/web_common.h"
 #include "src/RC_Common/config_backup.h"   // v4.06
+#include "src/RC_Common/funk_link.h"       // v5.01
 
-constexpr uint16_t Version = 500; // 5.00 - CRSF Parameter Version Number
+constexpr uint16_t Version = 501; // 5.01 - CRSF Parameter Version Number
+// v5.01: Funk (ESP-NOW, RC_Common 1.5.0): RC-System 5 = Zentrale, 6 = Teilnehmer.
 // v5.00: eine Firmware fuer C3, S3 und klassischen ESP32 (Platine Basis/TXRX,
 //        Auswahl zur Laufzeit, NVS "board", Lua Global > Platine (Neustart)).
 // v4.11: baut mit Core 3.3.x (BOOT_PIN -> BOOT_BTN_PIN).
@@ -141,6 +148,13 @@ bfs::SbusRx   sbus_rx(&UART_A_SERIAL, UART_A_RX, UART_A_TX, true); // v4.00: SBU
 bfs::SbusData sbus_data;
 
 CRSF crsf;
+
+// ======== Funk (NEU v5.01) ======================================
+// RC_System 5: Zentrale, CRSF vom Kabel geht zusaetzlich in den Funk
+// (Router-Port D). RC_System 6: Teilnehmer, CRSF kommt nur aus dem Funk.
+FunkLink   funk;
+FunkConfig g_funk;   // NVS fkid/fkch/fkpwr/fkrate/fkback
+static inline bool rcIsCrsf(int rc) { return rc >= 4 && rc <= 6; }
 
 uint16_t channel_output[16] = {};
 bool     BUS_OK              = false;
@@ -316,6 +330,7 @@ static void nvsWriteNow() {
     }
     p.putBool("ledrgb", g_led_rgb);   // v4.10
     p.putUChar("board", g_board);     // v5.00
+    funkConfigSave(p, g_funk);        // v5.01
     // v4.05: gemeinsame Schluessel aus RC_Common (settings_common.h)
     RcCommonSettings s;
     commonToSettings(s);
@@ -377,6 +392,7 @@ static void nvsLoad() {
         snprintf(key, sizeof(key), "mo3_%d", i); mode3[i]          = p.getInt(key, 0);
     }
     g_led_rgb = p.getBool("ledrgb", STATUS_LED_RGB_DEFAULT);   // v4.10
+    funkConfigLoad(p, g_funk);                                 // v5.01
     // v4.05: gemeinsame Schluessel (RC_Common). Fehlen sie (erster Start
     // nach dem Update), werden die alten Schluessel einmalig uebernommen.
     // Defaults wie bisher: WLAN-Auto-Failsafe und "dauerhaft an" AN (siehe
@@ -415,6 +431,7 @@ static void nvsReset() {
     g_wifi_always_on = true;                         // NEU v2.02
     for (int i = 0; i < 2; i++) { g_port_role[i] = UROLE_CRSF; g_port_baud[i] = uartRoleDefaultBaud(UROLE_CRSF); }  // v4.05
     g_led_rgb = STATUS_LED_RGB_DEFAULT;   // v4.10
+    g_funk = FunkConfig();                // v5.01
     // v5.00: g_board bleibt bei Werkseinstellungen erhalten (Hardware-Eigenschaft)
     nvsSave();
     nvsFlushPending();
@@ -441,7 +458,7 @@ static void updateLed() {
     const LinkStatistics& ls = crsf.getLinkStatistics();
     StatusLedInput in = {};
     in.configError     = g_ledConfigError;
-    in.crsf            = (RC_System_boot == 4);
+    in.crsf            = rcIsCrsf(RC_System_boot);
     in.busOk           = BUS_OK;
     in.lastRcFrameMs   = crsf.getLastRcFrameMs();
     in.linkStatsMs     = ls.lastUpdate;
@@ -450,14 +467,17 @@ static void updateLed() {
     in.sbusFailsafe    = sbus_data.failsafe;
     statusLed.setRgbOrder(g_led_rgb);
     // Doppelblitz gibt es hier nur bei doppelter Adresse -> blau
-    statusLed.update(statusLedMode(in, now), now, g_ledConfigError, webui_isApActive());
+    // v5.01: zweite Funk-Zentrale = gelber Doppelblitz (sonstiger Fehler)
+    bool dup = g_ledConfigError || funk.dupAddr();
+    in.configError = dup || funk.conflict();
+    statusLed.update(statusLedMode(in, now), now, dup, webui_isApActive());
 }
 
 // ======== CRSF-Failsafe =========================================
 // Nur BUS_OK setzen – kein ledcWrite() hier!
 // Output() schaltet Ausgänge kontrolliert ab.
 static void checkCrsfTimeout() {
-    if (RC_System_boot != 4) return;
+    if (!rcIsCrsf(RC_System_boot)) return;
     if (millis() - lastCrsfPacket > CRSF_TIMEOUT_MS) {
         BUS_OK = false;
     }
@@ -468,7 +488,7 @@ static void checkCrsfTimeout() {
 // weg. lastSbusFrameMs wird beim Empfang jedes Frames gesetzt (loop()).
 static constexpr unsigned long SBUS_TIMEOUT_MS = 10000;
 static void checkSbusTimeout() {
-    if (RC_System_boot == 4) return;
+    if (rcIsCrsf(RC_System_boot)) return;
     if (lastSbusFrameMs == 0 || millis() - lastSbusFrameMs > SBUS_TIMEOUT_MS) {
         BUS_OK = false;
     }
@@ -697,17 +717,63 @@ static uint8_t getPwmModus(int x) {
     return (pwm_wert[x] >= 200 && pwm_wert[x] <= 207) ? 1 : 0;
 }
 
+// ── Lua Funk 88-95 (NEU v5.01), wirken nach einem Neustart ───────────
+//   88: Folder "Funk"            89: Sel  "Betrieb (Neustart)" Kabel;Zentrale;Teilnehmer
+//   90: U8 "Kennung"  91: U8 "Kanal"  92: Sel "Leistung"
+//   93: Sel "Kanaele alle" (Zentrale)   94: Sel "Rueckkanal" (Teilnehmer)
+//   95: Info "Verbindung"
+static uint8_t luaGetFunkMode(uint8_t)            { return RC_System >= 5 && RC_System <= 6 ? RC_System - 4 : 0; }
+static void    luaSetFunkMode(uint8_t, uint8_t v) { RC_System = 4 + (v > 2 ? 2 : v); nvsSave(); }
+static uint8_t luaGetFunk(uint8_t i) {
+    switch (i) {
+        case 0: return g_funk.id;
+        case 1: return g_funk.ch;
+        case 2: return funkPwrIndex(g_funk.pwr);
+        case 3: return funkRateIndex(g_funk.rateMs);
+        default: return g_funk.back ? 1 : 0;
+    }
+}
+static void luaSetFunk(uint8_t i, uint8_t v) {
+    switch (i) {
+        case 0: g_funk.id = v; break;
+        case 1: g_funk.ch = v; break;
+        case 2: g_funk.pwr = FUNK_PWR_VALUES[v < FUNK_PWR_COUNT ? v : FUNK_PWR_COUNT - 1]; break;
+        case 3: g_funk.rateMs = FUNK_RATE_VALUES[v < FUNK_RATE_COUNT ? v : FUNK_RATE_COUNT - 1]; break;
+        default: g_funk.back = (v != 0); break;
+    }
+    funkConfigClamp(g_funk);
+    nvsSave();
+}
+static void luaShowFunkFolder(uint8_t, LuaView& v, char* buf) {
+    if (!funk.active()) { v.name = "Funk (aus)"; return; }
+    snprintf(buf, LUA_VIEW_BUF, "Funk (%s, %s)", funkRoleName(funk.role()),
+             funk.connected() ? "verbunden" : "keine Verbindung");
+    v.name = buf;
+}
+// Einstellungen nur sichtbar, wenn Funk gewaehlt ist
+static void luaViewFunkSet(uint8_t, LuaView& v, char*) { if (RC_System < 5) v.hidden = true; }
+static void luaViewFunkRate(uint8_t, LuaView& v, char*) { if (RC_System != 5) v.hidden = true; }
+static void luaViewFunkBack(uint8_t, LuaView& v, char*) { if (RC_System != 6) v.hidden = true; }
+static void luaViewFunkInfo(uint8_t, LuaView& v, char* buf) {
+    if (!funk.active()) { v.text = "Funk aus"; return; }
+    if (funk.conflict()) { v.text = "2. Zentrale!"; return; }
+    if (!funk.connected()) { v.text = "keine Gegenstelle"; return; }
+    snprintf(buf, LUA_VIEW_BUF, "%u Geg., %.1f%% Verl., %d dBm",
+             (unsigned)funk.partnerCount(), funk.worstLoss(), (int)funk.worstRssi());
+    v.text = buf;
+}
+
 // ── Lua-Menue als Tabelle (v4.05, RC_Common lua_menu.h) ──────────────
 // Jeder Eintrag steht einmal in buildLuaMenu(), Senden und Schreiben
 // laufen generisch ueber luaMenu. Lese-/Schreibfunktionen bekommen als
 // Argument die Ausgang- bzw. UART-Nummer. Schreiben ist auf min/max der
 // gerade gesendeten Ansicht begrenzt.
-static LuaItem luaItems[96];
-static LuaMenu luaMenu(luaItems, 96);
+static LuaItem luaItems[100];
+static LuaMenu luaMenu(luaItems, 100);
 static char    luaOutName[8][12];   // "Ausgang 1".."Ausgang 8"
 
 static uint8_t luaGetAddr(uint8_t)              { return (uint8_t)modul_adress; }
-static void    luaSetAddr(uint8_t, uint8_t v)   { modul_adress = v; crsf.setDeviceAddress(crsfAddrFromWM()); nvsSave(); }
+static void    luaSetAddr(uint8_t, uint8_t v)   { modul_adress = v; crsf.setDeviceAddress(crsfAddrFromWM()); funk.setCrsfAddr(crsfAddrFromWM()); nvsSave(); }
 static uint8_t luaGetCrsfCh(uint8_t)            { return (uint8_t)CRSF_Channel; }
 static void    luaSetCrsfCh(uint8_t, uint8_t v) { CRSF_Channel = v; nvsSave(); }
 
@@ -717,7 +783,7 @@ static void    luaSetCrsfCh(uint8_t, uint8_t v) { CRSF_Channel = v; nvsSave(); }
 // ist trotz des alten Namens "CRSF Kanal" der SBUS-Kanal fuer den Einkanal-
 // Empfang und hat dort keine Wirkung.
 static void luaHideSbusOnly(uint8_t, LuaView& v, char*) {
-    if (RC_System_boot == 4) v.hidden = true;
+    if (rcIsCrsf(RC_System_boot)) v.hidden = true;
 }
 static uint8_t luaGetLedRgb(uint8_t)            { return g_led_rgb ? 0 : 1; }   // v4.10
 static void    luaSetLedRgb(uint8_t, uint8_t v) { g_led_rgb = (v == 0); nvsSave(); }
@@ -782,7 +848,7 @@ static void    luaSetPwmModus(uint8_t x, uint8_t v) {
     nvsSave();
 }
 static void luaViewPwmModus(uint8_t, LuaView& v, char*) {
-    if (RC_System_boot != 4) { v.type = LUA_INFO; v.text = "Festwert (SBUS)"; }   // MWprop nur bei CRSF
+    if (!rcIsCrsf(RC_System_boot)) { v.type = LUA_INFO; v.text = "Festwert (SBUS)"; }   // MWprop nur bei CRSF
 }
 static uint8_t luaGetPwm(uint8_t x)            { return (uint8_t)pwm_wert[x]; }
 static void    luaSetPwm(uint8_t x, uint8_t v) { pwm_wert[x] = v; nvsSave(); }
@@ -893,6 +959,15 @@ static void buildLuaMenu() {
 #else
     m.info(85, 81, "UART C Baud", "nicht vorhanden")->view = luaHideAlways;
 #endif
+    // v5.01: Funk (ESP-NOW)
+    m.folder(88, 0, "Funk")->view = luaShowFunkFolder;
+    m.select(89, 88, "Betrieb (Neustart)", "Kabel;Kabel + Funk (Zentrale);Funk (Teilnehmer)", luaGetFunkMode, luaSetFunkMode);
+    m.u8(90, 88, "Kennung (Neustart)", 1, 255, "", luaGetFunk, luaSetFunk, 0)->view = luaViewFunkSet;
+    m.u8(91, 88, "Kanal (Neustart)", 1, 13, "", luaGetFunk, luaSetFunk, 1)->view = luaViewFunkSet;
+    m.select(92, 88, "Leistung (Neustart)", FUNK_PWR_OPTIONS, luaGetFunk, luaSetFunk, 2)->view = luaViewFunkSet;
+    m.select(93, 88, "Kanaele alle (Neustart)", FUNK_RATE_OPTIONS, luaGetFunk, luaSetFunk, 3)->view = luaViewFunkRate;
+    m.select(94, 88, "Rueckkanal (Neustart)", "Aus;An", luaGetFunk, luaSetFunk, 4)->view = luaViewFunkBack;
+    m.info(95, 88, "Verbindung", "")->view = luaViewFunkInfo;
 }
 
 // ======== Webinterface ==========================================
@@ -1080,10 +1155,21 @@ void setup() {
     g_board_boot = g_board;
     for (int i = 0; i < 8; i++) OutPin[i] = BOARD_OUT_PINS[g_board_boot][i];
 
-    if (RC_System_boot == 4) {
+    if (RC_System_boot == 6) {
+        // v5.01: Funk-Teilnehmer, CRSF nur aus dem Funk, UART A bleibt frei
+        funk.begin(FUNK_TEILNEHMER, g_funk, g_device_name, crsfAddrFromWM());
+        crsf.attach_stream(&funk);
+        crsf.setDeviceAddress(crsfAddrFromWM());
+        Serial.printf("CRSF aus Funk (Teilnehmer)  Geraeteadresse 0x%02X\n", crsfAddrFromWM());
+    } else if (rcIsCrsf(RC_System_boot)) {
         // v4.00: CRSF auf UART A (UART0), Pins siehe board_config.h
         crsf.init_crsf(&UART_A_SERIAL, UART_A_RX, UART_A_TX);
         crsf.setDeviceAddress(crsfAddrFromWM());   // eindeutige CRSF-Adresse aus WM-Adresse
+        if (RC_System_boot == 5) {
+            // v5.01: Funk-Zentrale, Funk als Port D des Routers
+            if (funk.begin(FUNK_ZENTRALE, g_funk, g_device_name, crsfAddrFromWM()))
+                crsf.attach_funk_stream(&funk);
+        }
         Serial.printf("CRSF gestartet (Board %s, RX=%d, TX=%d, 420000 Bd)  Geraeteadresse 0x%02X  Slot %d\n",
                       boardName(), UART_A_RX, UART_A_TX,
                       crsfAddrFromWM(), (uint8_t)constrain(modul_adress,0,15)*2);
@@ -1105,7 +1191,7 @@ void setup() {
 #if defined(UART_C_SERIAL)
     g_ports[1] = {"UART C", &UART_C_SERIAL, UART_C_RX, UART_C_TX, g_port_role[1], g_port_baud[1]};
 #endif
-    uartPortsBegin(g_ports, UART_PORT_COUNT, crsf, RC_System_boot == 4);
+    uartPortsBegin(g_ports, UART_PORT_COUNT, crsf, rcIsCrsf(RC_System_boot));
     buildLuaMenu();
 
     for (int i = 0; i < 8; i++) {
@@ -1144,9 +1230,10 @@ void loop() {
     bootButtonCheck();   // NEU v4.01 - aus demselben Grund am Loop-Anfang
     uartPortsUpdate();   // NEU v4.04 - S.Port/GPS, tut nichts ohne diese Rolle
 
-    if (RC_System_boot == 4) {
+    if (rcIsCrsf(RC_System_boot)) {
+        funk.loop();                                  // v5.01: vor read_packets()
         crsf.read_packets(0);
-        crsf.route_packets();                         // v4.01: Modulkette B/C
+        crsf.route_packets();                         // v4.01: Modulkette B/C, v5.01 Funk
         if (crsf.isDuplicateAddress()) g_ledConfigError = true;
         for (int i = 0; i < 16; i++)
             channel_output[i] = crsf.get_crfs_channels(i);

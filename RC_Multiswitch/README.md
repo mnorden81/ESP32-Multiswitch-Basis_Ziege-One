@@ -1,4 +1,4 @@
-# RC-Multiswitch v5.00 (Platinen Basis und TXRX)
+# RC-Multiswitch v5.01 (Platinen Basis und TXRX)
 
 Ab v5.00 gibt es eine gemeinsame Firmware für alle Multiswitch-Platinen: die beiden Platinen dieses Repos (klassischer ESP32) sowie RC-Multiswitch C3 und S3. Der Sketch ist in allen drei Repos identisch (`FIRMWARE.sha256`, von der CI geprüft). Er ersetzt die Ordner `MultiSwitch_ESP32_V3` und `MultiSwitch_ESP32_TXRX` (v3.17). V2 (`MultiSwitch_ESP32/`) bleibt unverändert.
 
@@ -51,7 +51,14 @@ Board **ESP32 Dev Module**, Partition Scheme **Default 4MB with spiffs**. Datei 
 | 3 | HoTT (SBUS) |
 | 4 | CRSF (ELRS/TBS), Werkseinstellung bei neuen Modulen |
 
-Lua-Menü und Telemetrie gibt es nur bei CRSF.
+| 5 | CRSF + Funk senden (Zentrale, ab v5.01) |
+| 6 | CRSF aus Funk (Teilnehmer, ab v5.01) |
+
+Lua-Menü und Telemetrie gibt es nur bei CRSF (4–6).
+
+## Funk (ab v5.01)
+
+Module ohne Kabel zum Empfänger bekommen CRSF per Funk (ESP-NOW). Das Modul am Empfänger läuft als **Zentrale** (RC-System 5), die anderen als **Teilnehmer** (RC-System 6, GPIO16/17 bleiben dann frei). Kanäle, Lua-Menü und Telemetrie laufen über Funk. Fahrzeug-Kennung und Funkkanal müssen überall gleich sein: Web-UI Reiter RC-System, Karte „Funk“, oder Lua-Ordner „Funk“. Der Reiter „Funk“ zeigt die Verbindungsqualität. Ohne Funk-Daten gehen nach 2 s alle Ausgänge aus. Mit Funk läuft das WLAN auf dem Funkkanal.
 
 ## Web-Interface
 
