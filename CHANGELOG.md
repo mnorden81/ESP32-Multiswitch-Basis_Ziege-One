@@ -1,10 +1,20 @@
 # Versionsgeschichte ESP32-MultiSwitch
 
-Dieses Repo enthält drei Sketche: **V2** (`MultiSwitch_ESP32/`), **V3** (`MultiSwitch_ESP32_V3/`) und **TXRX** (`MultiSwitch_ESP32_TXRX/`). TXRX ist derselbe Firmwarestand wie V3 für die Platine Multiswitch_TXRX und hat dieselben Versionsnummern. Die Version wird bei jeder Änderung erhöht, weil sie als CRSF „Parameter Version Number“ an den Sender geht. Neueste Version oben.
+Dieses Repo enthält zwei Sketche: **V2** (`MultiSwitch_ESP32/`) und ab v5.00 **RC_Multiswitch** (`RC_Multiswitch/`) für die Platinen Basis und TXRX. RC_Multiswitch ist dieselbe Firmware wie in RC-Multiswitch-ESP32-C3/-S3 und hat dieselben Versionsnummern (alle Versionen ab v4.00 siehe dort). Bis v3.17 gab es getrennte Ordner `MultiSwitch_ESP32_V3/` und `MultiSwitch_ESP32_TXRX/` (Stand in der Git-Historie). Die Version wird bei jeder Änderung erhöht, weil sie als CRSF „Parameter Version Number“ an den Sender geht. Neueste Version oben.
 
 Hardware und Grundlage der Firmware stammen von Der RC-Modellbauer (Ziege-One), siehe README.
 
-## V3 und TXRX
+## RC_Multiswitch (Basis und TXRX, ab v5.00)
+
+### v5.00 (RC_Common 1.4.0)
+- Eine Firmware für alle Multiswitch-Platinen (Basis, TXRX, C3, S3), ersetzt `MultiSwitch_ESP32_V3/` und `MultiSwitch_ESP32_TXRX/`. Grundlage ist RC-Multiswitch v4.11 (abgezweigt von V3 v3.12).
+- Platine Basis oder TXRX wählbar: Web-UI Reiter RC-System, Karte „Platine“, oder Lua Global > „Platine (Neustart)“ (Feld 87). Vorgabe Basis, wirkt nach Neustart.
+- Gespeicherte Einstellungen aus v3.17 bleiben erhalten (NVS `msw`). TXRX-Platine: nach dem Update einmal „TXRX“ wählen und neu starten.
+- Neu gegenüber v3.17 (aus v4.00–v4.11): Status-LED mit dem Farbschema aller Module (hier einfarbig an GPIO2), neues Lua-Menü (Ordner mit Wert, Felder ohne Wirkung ausgeblendet), RC_Common 1.4.0, Werkseinstellung RC-System CRSF bei neuen Modulen.
+- Wie bisher: CRSF/SBUS an GPIO16/17, GPIO13 beim Start auf GND = WLAN an. Kein BOOT-Taster (D1 Mini hat nur Reset) und keine UART B/C (keine freien Pins).
+- Projektbeschreibungen V3/TXRX v3.12 nach `docs/` verschoben.
+
+## V3 und TXRX (bis v3.17, Ordner entfernt)
 
 ### v3.17 (RC_Common 1.3.0)
 - Fix: lange Lua-Auswahlfelder (z. B. Ausgang-Quelle mit MKan) kommen Chunk für Chunk, das ELRS-Lua zeigt sie vollständig.
