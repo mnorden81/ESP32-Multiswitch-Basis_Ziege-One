@@ -109,3 +109,7 @@ Die Hardware dieses Projekts stammt von **Der RC-Modellbauer** (Frank Verfürth,
 | TXRX (v3.12) | [`docs/ESP32-MultiSwitch-TXRX-Projektbeschreibung-v3.12.docx`](docs/ESP32-MultiSwitch-TXRX-Projektbeschreibung-v3.12.docx) |
 
 *v2.00 erstellt von: PiperPilot*
+
+## Prüfstand (WebUI und Lua im Browser)
+
+In [`pruefstand/`](pruefstand/) liegt eine Seite, die die echte Weboberfläche und das Lua-Menü dieser Firmware im Browser zeigt (alle Varianten, Modul simuliert): [Prüfstand öffnen](https://raw.githack.com/mnorden81/ESP32-Multiswitch-Basis_Ziege-One/main/pruefstand/pruefstand.html). Sie wird bei jeder Firmware-Änderung neu gebaut, die GitHub-Prüfung „Prüfstand" achtet darauf.
