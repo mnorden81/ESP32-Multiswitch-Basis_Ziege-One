@@ -22,6 +22,12 @@ Der gemeinsame Code (CRSF-Bibliothek, Lua-Menü, NVS, WLAN-Failsafe, Status-LED,
 
 Die GitHub-CI prüft bei jedem Push die RC_Common-Kopien gegen `MANIFEST.sha256` und den Sketch RC_Multiswitch gegen `FIRMWARE.sha256`, führt die Host-Tests von RC_Common aus und kompiliert beide Sketches (ESP32-Core 3.0.7).
 
+## Projektvideo
+
+[![Projektvideo: CRSF-Ökosystem für RC-Modelle (zum Abspielen anklicken)](https://github.com/mnorden81/RC-CRSF-Router-ESP32-S3/raw/main/docs/video/projektvideo-vorschau.jpg)](https://github.com/mnorden81/RC-CRSF-Router-ESP32-S3/blob/main/docs/video/CRSF-Oekosystem_Projektvorstellung.mp4)
+
+Rund zwei Minuten Überblick über das ganze CRSF-Ökosystem: CRSF-Router, Multiswitch, Soundmodule, der ESP-NOW-CRSF-Link mit Funk in den Modulen und die Prüfstände für WebUI und Lua-Menü. Bild anklicken, dann startet das Video auf GitHub. Das Video liegt im Repo [RC-CRSF-Router-ESP32-S3](https://github.com/mnorden81/RC-CRSF-Router-ESP32-S3/tree/main/docs/video), weil es alle Module gemeinsam zeigt.
+
 ## Firmware flashen
 
 Es gibt drei Wege. Ein neues Modul wird einmal per USB geflasht (Weg 1 oder Weg 2), danach geht jedes Update bequem per WLAN (Weg 3).
