@@ -1,4 +1,4 @@
-# RC-Multiswitch v5.04 (Platinen Basis und TXRX)
+# RC-Multiswitch v5.05 (Platinen Basis und TXRX)
 
 Ab v5.00 gibt es eine gemeinsame Firmware für alle Multiswitch-Platinen: die beiden Platinen dieses Repos (klassischer ESP32) sowie RC-Multiswitch C3 und S3. Der Sketch ist in allen drei Repos identisch (`FIRMWARE.sha256`, von der CI geprüft). Er ersetzt die Ordner `MultiSwitch_ESP32_V3` und `MultiSwitch_ESP32_TXRX` (v3.17). V2 (`MultiSwitch_ESP32/`) bleibt unverändert.
 

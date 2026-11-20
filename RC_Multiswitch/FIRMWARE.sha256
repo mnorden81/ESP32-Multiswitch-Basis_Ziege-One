@@ -1,7 +1,7 @@
 # Firmware RC-Multiswitch: Pruefsummen der Sketch-Dateien (ohne src/RC_Common, eigenes MANIFEST).
 # Gleiche Datei in RC-Multiswitch-ESP32-C3, RC-Multiswitch-ESP32-S3 und ESP32-Multiswitch-Basis_Ziege-One.
 # Nach jeder Aenderung neu erzeugen: sha256sum RC_Multiswitch.ino board_config.h webui.h blink_presets.h
-16643e5ba20fa98961a6889f8d2101878d1ae65728c45c648f1b8170ad9c170d  RC_Multiswitch.ino
+8a0e0494451e47986cc875bcb0a0f47bd41ed5ee0b5244be957f4410fda342b2  RC_Multiswitch.ino
 d9d7f9981bf9c4f6ac8e1bd3e6ac2559e67a82e8bc1cc79ee625978467269fbc  board_config.h
 bde8228739df5d7b995c418e3c01c91b79ca3c0b85fa6c8658353fbba640ae67  webui.h
 88e7f8edc778389dce4f4dfd9eb89c6a002da6ee4a72050133801d690016406f  blink_presets.h

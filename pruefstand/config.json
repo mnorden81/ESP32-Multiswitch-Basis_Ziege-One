@@ -1,0 +1,114 @@
+{
+  "title": "ESP32-Multiswitch Prüfstand",
+  "firmwares": [
+    {
+      "id": "ms",
+      "name": "RC-Multiswitch",
+      "dir": "RC_Multiswitch",
+      "page": {
+        "file": "webui.h",
+        "var": "WEBUI_HTML"
+      },
+      "mock": "mock_multiswitch.js",
+      "version": "Version",
+      "lua": {
+        "files": [
+          "src/RC_Common/rc_common.h",
+          "src/RC_Common/uart_roles.h",
+          "src/RC_Common/funk_link.h",
+          "board_config.h",
+          "RC_Multiswitch.ino"
+        ],
+        "expect_max": "CRSF_PARAM_COUNT"
+      },
+      "export": [
+        "BOARD_CHIP",
+        "BOARD_LED_TEXT",
+        "BOARD_WIFI_TEXT",
+        "UART_A_RX",
+        "UART_A_TX",
+        "BOARD_OUT_PINS",
+        "BOARD_VARIANT_NAMES?",
+        "Ausgang_Name",
+        "Ausgang_Kanal"
+      ],
+      "variants": [
+        {
+          "id": "esp32",
+          "name": "ESP32 Basis/TXRX",
+          "defines": {
+            "CONFIG_IDF_TARGET_ESP32": "1"
+          },
+          "overrides": {
+            "boardName()": "Basis"
+          },
+          "hint": "Basis oder TXRX wählt man im Modul (Karte „Platine“ oder Lua Global)."
+        },
+        {
+          "id": "s3",
+          "name": "ESP32-S3",
+          "defines": {
+            "CONFIG_IDF_TARGET_ESP32S3": "1"
+          },
+          "overrides": {
+            "boardName()": "S3"
+          }
+        },
+        {
+          "id": "c3",
+          "name": "ESP32-C3",
+          "defines": {
+            "CONFIG_IDF_TARGET_ESP32C3": "1"
+          },
+          "overrides": {
+            "boardName()": "C3"
+          }
+        }
+      ],
+      "api": {
+        "GET /api/status": "handleStatus",
+        "GET /api/config": "handleConfig"
+      },
+      "api_files": [
+        "src/RC_Common/*.h",
+        "*.h",
+        "*.ino"
+      ],
+      "api_init": [
+        "nvsReset"
+      ]
+    },
+    {
+      "id": "v2",
+      "name": "MultiSwitch V2",
+      "dir": "MultiSwitch_ESP32",
+      "page": {
+        "file": "webui.h",
+        "var": "WEBUI_HTML"
+      },
+      "mock": "mock_multiswitch.js",
+      "version": "Version",
+      "lua": {
+        "files": [
+          "src/RC_Common/rc_common.h",
+          "src/RC_Common/uart_roles.h",
+          "MultiSwitch_ESP32.ino"
+        ]
+      },
+      "export": [
+        "OutPin",
+        "Ausgang_Name?",
+        "Ausgang_Kanal?"
+      ],
+      "variants": [
+        {
+          "id": "v2",
+          "name": "V2 (ohne MKan)",
+          "defines": {
+            "CONFIG_IDF_TARGET_ESP32": "1"
+          }
+        }
+      ]
+    }
+  ]
+}
