@@ -1,5 +1,5 @@
 /*
-    RC-Multiswitch  v5.01  (ESP32-C3 SuperMini / Waveshare ESP32-S3-Zero /
+    RC-Multiswitch  v5.05  (ESP32-C3 SuperMini / Waveshare ESP32-S3-Zero /
                             ESP32 Platine Basis (D1 Mini) oder TXRX)
     PiperPilot
 
@@ -70,7 +70,9 @@
 #include "src/RC_Common/config_backup.h"   // v4.06
 #include "src/RC_Common/funk_link.h"       // v5.01
 
-constexpr uint16_t Version = 504; // 5.04 - CRSF Parameter Version Number
+constexpr uint16_t Version = 505; // 5.05 - CRSF Parameter Version Number
+// v5.05: Lua: ein Ordner "Ausgaenge" mit Auswahl "Ausgang Nr" statt 8 Ordnern
+//        (wie Ordner "Sounds" in den Soundmodulen), Feld-IDs 1-34.
 // v5.01: Funk (ESP-NOW, RC_Common 1.5.0): RC-System 5 = Zentrale, 6 = Teilnehmer.
 // v5.00: eine Firmware fuer C3, S3 und klassischen ESP32 (Platine Basis/TXRX,
 //        Auswahl zur Laufzeit, NVS "board", Lua Global > Platine (Neustart)).
@@ -655,42 +657,24 @@ static void einkanalFunctionSBUSGroup(uint8_t g, uint16_t channel) {
                      | ((uint16_t)einkanal_Gruppe[1] << 8);
 }
 
-// ======== CRSF LUA Parameter-System =====================================
-// Parameterstruktur (nach rcmultiswitchG030 Referenz):
-//   0:  Root Folder, 1: Version Info, 2: Folder "Global"
-//   3: Switch Addr, 4: CRSF Kanal
-//   5+x*5+0..4: Folder + 4 Parameter pro Ausgang (x=0..7)
 // ======== CRSF LUA / TBS Agent Parameter-System ========================
-//
-// Pro Ausgang (9 Eintraege inkl. Folder):
-//   fi+0: Folder
-//   fi+1: Sel "Ausgang-Quelle"  Einzelkanal;Kanal_L;Kanal_H
-//   fi+2: U8  "Kanal Nr"        1-8 (Einzelkanal) oder 1-16 (Kanal_L/H)
-//   fi+3: Sel "Blink"           Dauerlicht;Blinken
-//   fi+4: U8  "Blink AN *10ms"  1-250
-//   fi+5: U8  "Blink AUS *10ms" 1-250
-//   fi+6: Sel "PWM Modus"       Festwert;MWprop (nur CRSF)
-//   fi+7: U8  "PWM Festwert"    0-255
-//   fi+8: Sel "Test"            Aus;Ein
-// Global: 0=Root,1=Version,2=Folder,3=Switch Addr,4=CRSF Kanal
-// WLAN (NEU v2.02, uebernommen aus dem Soundmodul-Projekt, dortiges
-// CRSF/Lua-Menue fuer WLAN-Einstellungen, Felder 174-181): eigener
-// Ordner 77 mit Kindern 78-80, an die Root angehaengt statt bestehende
-// IDs 0-76 umzunummerieren, damit bestehende Radio-Profile/Lua-Skripte
-// mit festen Feld-IDs weiterlaufen (gleiches Vorgehen wie beim
-// Soundmodul beim Anhaengen von Feld 181 an Ordner 160).
-//   77: Folder "WLAN"         (Kinder 78,79,80)
-//   78: Sel  "Auto-Failsafe"  Aus;Ein  -> g_wifi_auto
-//   79: U8   "Auto Timeout"   5-240 s  -> g_wifi_auto_timeout
-//   80: Sel  "Dauerhaft an"   Aus;Ein  -> g_wifi_always_on
-// Total: 5+8*9+4=81 Parameter (0..80)
-// UART B/C (NEU v4.04), ebenfalls angehaengt:
-//   81: Folder "UART B/C"     (Kinder 82,83,84)
-//   82: Sel  "UART B"         Aus;CRSF;S.Port;GPS;Raw -> g_port_role[0]
-//   83: Sel  "UART C"         wie 82 (S3), Info beim C3 -> g_port_role[1]
-//   84: Sel  "UART B Baud"    Auto;9600..420000 (v4.05, vorher "GPS Baud")
-//   85: Sel  "UART C Baud"    wie 84 (S3), Info beim C3
-// Total: 86 Parameter (0..85), Tabelle siehe buildLuaMenu()
+// v5.05: Feld-IDs neu durchnummeriert (lueckenlos 1..34). Statt je einem
+// Ordner pro Ausgang (8 x 9 Felder) gibt es einen Ordner "Ausgaenge" mit
+// Auswahl "Ausgang Nr", gleiches Muster wie der Ordner "Sounds" der
+// Soundmodule. Das ELRS-Lua laedt nach einer Aenderung von "Ausgang Nr" die
+// Zahlen-/Auswahlfelder des Ordners neu, darum ist "Name" eine Auswahl mit
+// nur einem Eintrag statt eines Info-Felds.
+//    0: Root  1: Info Version
+//    2: Folder "Global"  {3 Switch Addr, 4 SBUS EK Kanal, 25 LED Farbfolge, 26 Platine}
+//    5: Folder "Ausgaenge" {6..15}
+//       6 Sel Ausgang Nr (nur Auswahl, nicht gespeichert)  7 Sel Name (nur Anzeige)
+//       8 Sel Ausgang-Quelle  9 U8 Bit Nr / RC-Kanal Nr  10 Sel Blink
+//      11 U8 Blink AN *10ms  12 U8 Blink AUS *10ms  13 Sel PWM Modus
+//      14 U8 PWM Festwert  15 Sel Test
+//   16: Folder "WLAN" {17 Auto-Failsafe, 18 Auto Timeout, 19 Dauerhaft an}
+//   20: Folder "UART B/C" {21 UART B, 22 UART C, 23 UART B Baud, 24 UART C Baud}
+//   27: Folder "Funk" {28 Betrieb, 29 Kennung, 30 Kanal, 31 Leistung,
+//       32 Kanaele alle, 33 Rueckkanal, 34 Info Verbindung}
 
 // ── CRSF-Geraeteadresse + Ping-Slot aus der WM-Adresse (uebernommen aus Soundmodul v1.24) ──
 // Adresse = 0xC0 + modul_adress; Slot = (Adresse-0xC0)*2; Antwort erst im eigenen
@@ -734,10 +718,10 @@ static uint8_t getPwmModus(int x) {
     return (pwm_wert[x] >= 200 && pwm_wert[x] <= 207) ? 1 : 0;
 }
 
-// ── Lua Funk 88-95 (NEU v5.01), wirken nach einem Neustart ───────────
-//   88: Folder "Funk"            89: Sel  "Betrieb (Neustart)" Kabel;Zentrale;Teilnehmer
-//   90: U8 "Kennung"  91: U8 "Kanal"  92: Sel "Leistung"
-//   93: Sel "Kanaele alle" (Zentrale)   94: Sel "Rueckkanal" (Teilnehmer)
+// ── Lua Funk 27-34 (v5.01, seit v5.05 neue IDs), wirken nach einem Neustart ──
+//   27: Folder "Funk"            28: Sel  "Betrieb (Neustart)" Kabel;Zentrale;Teilnehmer
+//   29: U8 "Kennung"  30: U8 "Kanal"  31: Sel "Leistung"
+//   32: Sel "Kanaele alle" (Zentrale)   33: Sel "Rueckkanal" (Teilnehmer)
 //   95: Info "Verbindung"
 static uint8_t luaGetFunkMode(uint8_t)            { return RC_System >= 5 && RC_System <= 6 ? RC_System - 4 : 0; }
 static void    luaSetFunkMode(uint8_t, uint8_t v) { RC_System = 4 + (v > 2 ? 2 : v); nvsSave(); }
@@ -785,9 +769,10 @@ static void luaViewFunkInfo(uint8_t, LuaView& v, char* buf) {
 // laufen generisch ueber luaMenu. Lese-/Schreibfunktionen bekommen als
 // Argument die Ausgang- bzw. UART-Nummer. Schreiben ist auf min/max der
 // gerade gesendeten Ansicht begrenzt.
-static LuaItem luaItems[100];
-static LuaMenu luaMenu(luaItems, 100);
-static char    luaOutName[8][12];   // "Ausgang 1".."Ausgang 8"
+static constexpr uint8_t OUTS_FI          = 5;    // v5.05: Ordner "Ausgaenge"
+static constexpr uint8_t CRSF_PARAM_COUNT = 34;
+static LuaItem luaItems[CRSF_PARAM_COUNT + 1];
+static LuaMenu luaMenu(luaItems, CRSF_PARAM_COUNT + 1);
 
 static uint8_t luaGetAddr(uint8_t)              { return (uint8_t)modul_adress; }
 void applyModulAddress() { crsf.setDeviceAddress(crsfAddrFromWM()); funk.setCrsfAddr(crsfAddrFromWM()); }
@@ -839,13 +824,6 @@ static void    luaSetBlink(uint8_t x, uint8_t v) {
     }
     nvsSave();
 }
-// Quelle im Ordnernamen, z. B. "Ausgang 1 (Kanal_L 5)"
-static void luaShowOutFolder(uint8_t x, LuaView& v, char* buf) {
-    static const char* const Q[] = {"Bit", "Kanal_L", "Kanal_H", "MKan1 Bit", "MKan2 Bit"};
-    uint8_t q = getKanalQuelle(x);
-    snprintf(buf, LUA_VIEW_BUF, "%s (%s %d)", luaOutName[x], Q[q < 5 ? q : 0], (int)getKanalNr(x));
-    v.name = buf;
-}
 // Blinkzeiten nur bei "Blinken" sichtbar
 static void luaViewBlinkTime(uint8_t x, LuaView& v, char*) {
     if (!((mode[x] >> 8) & 0xFF)) v.hidden = true;
@@ -885,7 +863,40 @@ static void    luaSetTest(uint8_t x, uint8_t v) {
     else   einkanal_Data &= ~(1 << x);
 }
 
-// WLAN 78-80: rein persistierend, wirkt beim naechsten Timeout bzw. Booten
+// ── Ordner "Ausgaenge" (v5.05, wie Ordner "Sounds" der Soundmodule) ──────
+// "Ausgang Nr" waehlt nur aus, welcher Ausgang gerade bearbeitet wird (nicht
+// gespeichert). Die Felder darunter lesen und schreiben den gewaehlten
+// Ausgang ueber die Funktionen oben (Argument = Ausgang 0-7).
+static uint8_t luaOutSel = 0;   // 0..7
+static uint8_t luaGetOutNr(uint8_t)                  { return luaOutSel; }
+static void    luaSetOutNr(uint8_t, uint8_t v)       { if (v < 8) luaOutSel = v; }
+static uint8_t luaGetZero(uint8_t)                   { return 0; }
+static void luaShowOutName(uint8_t, LuaView& v, char* buf) {
+    snprintf(buf, LUA_VIEW_BUF, "%s", Ausgang_Name[luaOutSel]);
+    v.text = buf;
+    v.max  = 0;
+    v.value = 0;
+}
+static uint8_t luaGetSelQuelle(uint8_t)              { return luaGetQuelle(luaOutSel); }
+static void    luaSetSelQuelle(uint8_t, uint8_t v)   { luaSetQuelle(luaOutSel, v); }
+static uint8_t luaGetSelNr(uint8_t)                  { return luaGetNr(luaOutSel); }
+static void    luaSetSelNr(uint8_t, uint8_t v)       { luaSetNr(luaOutSel, v); }
+static void    luaViewSelNr(uint8_t, LuaView& v, char* b) { luaViewNr(luaOutSel, v, b); }
+static uint8_t luaGetSelBlink(uint8_t)               { return luaGetBlink(luaOutSel); }
+static void    luaSetSelBlink(uint8_t, uint8_t v)    { luaSetBlink(luaOutSel, v); }
+static void    luaViewSelBlinkTime(uint8_t, LuaView& v, char* b) { luaViewBlinkTime(luaOutSel, v, b); }
+static uint8_t luaGetSelBlinkOn(uint8_t)             { return luaGetBlinkOn(luaOutSel); }
+static void    luaSetSelBlinkOn(uint8_t, uint8_t v)  { luaSetBlinkOn(luaOutSel, v); }
+static uint8_t luaGetSelBlinkOff(uint8_t)            { return luaGetBlinkOff(luaOutSel); }
+static void    luaSetSelBlinkOff(uint8_t, uint8_t v) { luaSetBlinkOff(luaOutSel, v); }
+static uint8_t luaGetSelPwmModus(uint8_t)            { return luaGetPwmModus(luaOutSel); }
+static void    luaSetSelPwmModus(uint8_t, uint8_t v) { luaSetPwmModus(luaOutSel, v); }
+static uint8_t luaGetSelPwm(uint8_t)                 { return luaGetPwm(luaOutSel); }
+static void    luaSetSelPwm(uint8_t, uint8_t v)      { luaSetPwm(luaOutSel, v); }
+static void    luaViewSelPwm(uint8_t, LuaView& v, char* b) { luaViewPwm(luaOutSel, v, b); }
+static void    luaSetSelTest(uint8_t, uint8_t v)     { luaSetTest(luaOutSel, v); }
+
+// WLAN 17-19 (bis v5.04: 78-80): rein persistierend, wirkt beim naechsten Timeout bzw. Booten
 // (kein WLAN-Start aus dem CRSF-Handler, Lehre aus dem Soundmodul v7.15)
 static uint8_t luaGetWifiAuto(uint8_t)              { return g_wifi_auto ? 1 : 0; }
 static void    luaSetWifiAuto(uint8_t, uint8_t v)   { g_wifi_auto = (v != 0); nvsSave(); }
@@ -894,7 +905,7 @@ static void    luaSetWifiTo(uint8_t, uint8_t v)     { g_wifi_auto_timeout = v; n
 static uint8_t luaGetWifiAlways(uint8_t)            { return g_wifi_always_on ? 1 : 0; }
 static void    luaSetWifiAlways(uint8_t, uint8_t v) { g_wifi_always_on = (v != 0); nvsSave(); }
 
-// UART B/C 82-85: wirken nach einem Neustart (UARTs starten in setup())
+// UART B/C 21-24 (bis v5.04: 82-85): wirken nach einem Neustart (UARTs starten in setup())
 static uint8_t luaGetRole(uint8_t i)            { return g_port_role[i]; }
 static void    luaSetRole(uint8_t i, uint8_t v) { setPortRole(i, v); nvsSave(); }
 static uint8_t luaGetBaud(uint8_t i)            { return uartBaudToIndex(g_port_baud[i]); }
@@ -925,67 +936,65 @@ static void buildLuaMenu() {
     m.u8(3, 2, "Switch Addr", 0, 20, "", luaGetAddr, luaSetAddr);
     m.u8(4, 2, "SBUS EK Kanal", 0, 15, "", luaGetCrsfCh, luaSetCrsfCh)->view = luaHideSbusOnly;
 #if STATUS_LED_WS2812
-    m.select(86, 2, "LED Farbfolge", "RGB (S3-Zero);GRB", luaGetLedRgb, luaSetLedRgb);   // v4.10
+    m.select(25, 2, "LED Farbfolge", "RGB (S3-Zero);GRB", luaGetLedRgb, luaSetLedRgb);   // v4.10
 #else
-    m.info(86, 2, "LED Farbfolge", "keine RGB-LED")->view = luaHideAlways;
+    m.info(25, 2, "LED Farbfolge", "keine RGB-LED")->view = luaHideAlways;
 #endif
 #if BOARD_SELECTABLE
-    m.select(87, 2, "Platine (Neustart)", "Basis (D1 Mini);TXRX", luaGetBoard, luaSetBoard);   // v5.00
+    m.select(26, 2, "Platine (Neustart)", "Basis (D1 Mini);TXRX", luaGetBoard, luaSetBoard);   // v5.00
 #else
-    m.info(87, 2, "Platine", BOARD_VARIANT_NAMES[0]);   // v5.00: C3/S3 automatisch
+    m.info(26, 2, "Platine", BOARD_VARIANT_NAMES[0]);   // v5.00: C3/S3 automatisch
 #endif
-    for (uint8_t x = 0; x < 8; x++) {
-        uint8_t fi = 5 + x * 9;
-        snprintf(luaOutName[x], sizeof(luaOutName[x]), "Ausgang %d", x + 1);
-        LuaItem* fo = m.folder(fi, 0, luaOutName[x]);
-        fo->arg = x; fo->view = luaShowOutFolder;
-        m.select(fi + 1, fi, "Ausgang-Quelle", "Einzelkanal;Kanal_L;Kanal_H;MKan1;MKan2",
-                 luaGetQuelle, luaSetQuelle, x);
-        m.u8(fi + 2, fi, "Bit Nr", 1, 8, "", luaGetNr, luaSetNr, x)->view = luaViewNr;
-        m.select(fi + 3, fi, "Blink", "Dauerlicht;Blinken", luaGetBlink, luaSetBlink, x);
-        m.u8(fi + 4, fi, "Blink AN *10ms", 1, 250, "", luaGetBlinkOn, luaSetBlinkOn, x)->view = luaViewBlinkTime;
-        m.u8(fi + 5, fi, "Blink AUS *10ms", 1, 250, "", luaGetBlinkOff, luaSetBlinkOff, x)->view = luaViewBlinkTime;
-        m.select(fi + 6, fi, "PWM Modus", "Festwert;MWprop (Kanal=Ausgang)",
-                 luaGetPwmModus, luaSetPwmModus, x)->view = luaViewPwmModus;
-        m.u8(fi + 7, fi, "PWM Festwert", 0, 255, "", luaGetPwm, luaSetPwm, x)->view = luaViewPwm;
-        m.select(fi + 8, fi, "Test", "Aus;Ein", luaGetTest, luaSetTest, x);
-    }
-    m.folder(77, 0, "WLAN");
-    m.select(78, 77, "Auto-Failsafe", "Aus;Ein", luaGetWifiAuto, luaSetWifiAuto);
-    m.u8(79, 77, "Auto Timeout", 5, 240, "s", luaGetWifiTo, luaSetWifiTo);
-    m.select(80, 77, "Dauerhaft an", "Aus;Ein", luaGetWifiAlways, luaSetWifiAlways);
+    // v5.05: ein Ordner "Ausgaenge" mit Auswahl "Ausgang Nr"
+    const uint8_t A = OUTS_FI;
+    m.folder(A, 0, "Ausgaenge");
+    m.select(A + 1, A, "Ausgang Nr", "1;2;3;4;5;6;7;8", luaGetOutNr, luaSetOutNr);
+    m.select(A + 2, A, "Name", "-", luaGetZero, nullptr)->view = luaShowOutName;
+    m.select(A + 3, A, "Ausgang-Quelle", "Einzelkanal;Kanal_L;Kanal_H;MKan1;MKan2", luaGetSelQuelle, luaSetSelQuelle);
+    m.u8(A + 4, A, "Bit Nr", 1, 8, "", luaGetSelNr, luaSetSelNr)->view = luaViewSelNr;
+    m.select(A + 5, A, "Blink", "Dauerlicht;Blinken", luaGetSelBlink, luaSetSelBlink);
+    m.u8(A + 6, A, "Blink AN *10ms", 1, 250, "", luaGetSelBlinkOn, luaSetSelBlinkOn)->view = luaViewSelBlinkTime;
+    m.u8(A + 7, A, "Blink AUS *10ms", 1, 250, "", luaGetSelBlinkOff, luaSetSelBlinkOff)->view = luaViewSelBlinkTime;
+    m.select(A + 8, A, "PWM Modus", "Festwert;MWprop (Kanal=Ausgang)", luaGetSelPwmModus, luaSetSelPwmModus)->view = luaViewPwmModus;
+    m.u8(A + 9, A, "PWM Festwert", 0, 255, "", luaGetSelPwm, luaSetSelPwm)->view = luaViewSelPwm;
+    m.select(A + 10, A, "Test", "Aus;Ein", luaGetTest, luaSetSelTest);
+    m.folder(16, 0, "WLAN");
+    m.select(17, 16, "Auto-Failsafe", "Aus;Ein", luaGetWifiAuto, luaSetWifiAuto);
+    m.u8(18, 16, "Auto Timeout", 5, 240, "s", luaGetWifiTo, luaSetWifiTo);
+    m.select(19, 16, "Dauerhaft an", "Aus;Ein", luaGetWifiAlways, luaSetWifiAlways);
 #if defined(UART_B_SERIAL)
-    m.folder(81, 0, "UART B/C")->view = luaShowUartFolder;
-    m.select(82, 81, "UART B (Neustart)", uartRoleOptions(), luaGetRole, luaSetRole, 0);
+    m.folder(20, 0, "UART B/C")->view = luaShowUartFolder;
+    m.select(21, 20, "UART B (Neustart)", uartRoleOptions(), luaGetRole, luaSetRole, 0);
 #else
     // v5.00: Basis/TXRX ohne UART B/C, Feld-IDs bleiben belegt
-    m.folder(81, 0, "UART B/C")->view = luaHideAlways;
-    m.info(82, 81, "UART B", "nicht vorhanden")->view = luaHideAlways;
+    m.folder(20, 0, "UART B/C")->view = luaHideAlways;
+    m.info(21, 20, "UART B", "nicht vorhanden")->view = luaHideAlways;
 #endif
 #if defined(UART_C_SERIAL)
-    m.select(83, 81, "UART C (Neustart)", uartRoleOptions(), luaGetRole, luaSetRole, 1);
+    m.select(22, 20, "UART C (Neustart)", uartRoleOptions(), luaGetRole, luaSetRole, 1);
 #else
-    m.info(83, 81, "UART C", "nicht vorhanden")->view = luaHideAlways;
+    m.info(22, 20, "UART C", "nicht vorhanden")->view = luaHideAlways;
 #endif
 #if defined(UART_B_SERIAL)
-    m.select(84, 81, "UART B Baud", uartBaudOptions(), luaGetBaud, luaSetBaud, 0)->view = luaViewBaud;
+    m.select(23, 20, "UART B Baud", uartBaudOptions(), luaGetBaud, luaSetBaud, 0)->view = luaViewBaud;
 #else
-    m.info(84, 81, "UART B Baud", "nicht vorhanden")->view = luaHideAlways;
+    m.info(23, 20, "UART B Baud", "nicht vorhanden")->view = luaHideAlways;
 #endif
 #if defined(UART_C_SERIAL)
-    m.select(85, 81, "UART C Baud", uartBaudOptions(), luaGetBaud, luaSetBaud, 1)->view = luaViewBaud;
+    m.select(24, 20, "UART C Baud", uartBaudOptions(), luaGetBaud, luaSetBaud, 1)->view = luaViewBaud;
 #else
-    m.info(85, 81, "UART C Baud", "nicht vorhanden")->view = luaHideAlways;
+    m.info(24, 20, "UART C Baud", "nicht vorhanden")->view = luaHideAlways;
 #endif
     // v5.01: Funk (ESP-NOW)
-    m.folder(88, 0, "Funk")->view = luaShowFunkFolder;
-    m.select(89, 88, "Betrieb (Neustart)", "Kabel;Kabel + Funk (Zentrale);Funk (Teilnehmer)", luaGetFunkMode, luaSetFunkMode);
-    m.u8(90, 88, "Kennung (Neustart)", 1, 255, "", luaGetFunk, luaSetFunk, 0)->view = luaViewFunkSet;
-    m.u8(91, 88, "Kanal (Neustart)", 1, 13, "", luaGetFunk, luaSetFunk, 1)->view = luaViewFunkSet;
-    m.select(92, 88, "Leistung (Neustart)", FUNK_PWR_OPTIONS, luaGetFunk, luaSetFunk, 2)->view = luaViewFunkSet;
-    m.select(93, 88, "Kanaele alle (Neustart)", FUNK_RATE_OPTIONS, luaGetFunk, luaSetFunk, 3)->view = luaViewFunkRate;
-    m.select(94, 88, "Rueckkanal (Neustart)", "Aus;An", luaGetFunk, luaSetFunk, 4)->view = luaViewFunkBack;
-    m.info(95, 88, "Verbindung", "")->view = luaViewFunkInfo;
+    m.folder(27, 0, "Funk")->view = luaShowFunkFolder;
+    m.select(28, 27, "Betrieb (Neustart)", "Kabel;Kabel + Funk (Zentrale);Funk (Teilnehmer)", luaGetFunkMode, luaSetFunkMode);
+    m.u8(29, 27, "Kennung (Neustart)", 1, 255, "", luaGetFunk, luaSetFunk, 0)->view = luaViewFunkSet;
+    m.u8(30, 27, "Kanal (Neustart)", 1, 13, "", luaGetFunk, luaSetFunk, 1)->view = luaViewFunkSet;
+    m.select(31, 27, "Leistung (Neustart)", FUNK_PWR_OPTIONS, luaGetFunk, luaSetFunk, 2)->view = luaViewFunkSet;
+    m.select(32, 27, "Kanaele alle (Neustart)", FUNK_RATE_OPTIONS, luaGetFunk, luaSetFunk, 3)->view = luaViewFunkRate;
+    m.select(33, 27, "Rueckkanal (Neustart)", "Aus;An", luaGetFunk, luaSetFunk, 4)->view = luaViewFunkBack;
+    m.info(34, 27, "Verbindung", "")->view = luaViewFunkInfo;
+    static_assert(OUTS_FI + 10 + 1 == 16, "Lua-Feldnummern nicht lueckenlos");
 }
 
 // ======== Webinterface ==========================================

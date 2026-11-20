@@ -14,7 +14,7 @@ Dieses Repository enthält zwei eigenständige, unabhängig voneinander baubare 
 | Ordner | Version | Beschreibung |
 |--------|---------|--------------|
 | [`MultiSwitch_ESP32/`](MultiSwitch_ESP32/) | v2.08 | Linie v2.xx. Enthält die Projektbeschreibung als Word-Dokument. |
-| [`RC_Multiswitch/`](RC_Multiswitch/) | v5.04 | Eine Firmware für die Platinen **Basis** (ESP32 D1 Mini, bisher V3) und **TXRX** (ULN2803A / TBD62083, bisher TXRX). Die Platine wählt man in der Web-UI oder im Lua. Derselbe Sketch läuft auch auf RC-Multiswitch C3 und S3. Ersetzt die Ordner `MultiSwitch_ESP32_V3/` und `MultiSwitch_ESP32_TXRX/` (v3.17, in der Git-Historie). |
+| [`RC_Multiswitch/`](RC_Multiswitch/) | v5.05 | Eine Firmware für die Platinen **Basis** (ESP32 D1 Mini, bisher V3) und **TXRX** (ULN2803A / TBD62083, bisher TXRX). Die Platine wählt man in der Web-UI oder im Lua. Derselbe Sketch läuft auch auf RC-Multiswitch C3 und S3. Ersetzt die Ordner `MultiSwitch_ESP32_V3/` und `MultiSwitch_ESP32_TXRX/` (v3.17, in der Git-Historie). |
 
 Pin-Belegungen stehen in der jeweiligen `README.md` im Projektordner, alle Versionen in [CHANGELOG.md](CHANGELOG.md).
 
@@ -32,7 +32,7 @@ Es gibt drei Wege. Ein neues Modul wird einmal per USB geflasht (Weg 1 oder Weg 
 | 2. Arduino IDE | Arduino IDE 2.x | bleiben erhalten |
 | 3. Update per WLAN | Handy oder PC mit WLAN | bleiben erhalten |
 
-Zuerst die passende Variante wählen: **MultiSwitch_ESP32** (v2.xx) oder **RC_Multiswitch** (v5.04, Platinen Basis und TXRX). Bei RC_Multiswitch nach dem ersten Flashen in der Web-UI (Reiter RC-System, Karte „Platine“) die Platine wählen und neu starten, Vorgabe ist Basis. `<Sketch>` steht unten für diesen Namen.
+Zuerst die passende Variante wählen: **MultiSwitch_ESP32** (v2.xx) oder **RC_Multiswitch** (v5.05, Platinen Basis und TXRX). Bei RC_Multiswitch nach dem ersten Flashen in der Web-UI (Reiter RC-System, Karte „Platine“) die Platine wählen und neu starten, Vorgabe ist Basis. `<Sketch>` steht unten für diesen Namen.
 
 ### Weg 1: Fertige Firmware aus GitHub (ohne Arduino IDE)
 
